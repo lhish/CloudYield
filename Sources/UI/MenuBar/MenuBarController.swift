@@ -14,6 +14,7 @@ class MenuBarController: NSObject {
     private var statusItem: NSStatusItem?
     private let stateEngine: StateTransitionEngine
     private var menu: NSMenu?
+    private var statusMenuItem: NSMenuItem?
 
     // MARK: - Initialization
 
@@ -42,13 +43,15 @@ class MenuBarController: NSObject {
         menu = NSMenu()
 
         // 状态显示
-        let statusItem = NSMenuItem(
+        statusMenuItem = NSMenuItem(
             title: "正在监控中",
             action: nil,
             keyEquivalent: ""
         )
-        statusItem.isEnabled = false
-        menu?.addItem(statusItem)
+        statusMenuItem?.isEnabled = false
+        if let item = statusMenuItem {
+            menu?.addItem(item)
+        }
 
         menu?.addItem(NSMenuItem.separator())
 
@@ -61,6 +64,17 @@ class MenuBarController: NSObject {
         pauseItem.target = self
         pauseItem.tag = 100 // 用于后续更新标题
         menu?.addItem(pauseItem)
+
+        menu?.addItem(NSMenuItem.separator())
+
+        // 打开日志目录
+        let logItem = NSMenuItem(
+            title: "打开日志目录",
+            action: #selector(openLogDirectory),
+            keyEquivalent: "l"
+        )
+        logItem.target = self
+        menu?.addItem(logItem)
 
         menu?.addItem(NSMenuItem.separator())
 
@@ -126,9 +140,22 @@ class MenuBarController: NSObject {
     }
 
     private func updateStatusText(for state: MonitorState) {
-        guard let menu = menu, let statusMenuItem = menu.items.first else { return }
-
+        guard let statusMenuItem = statusMenuItem else { return }
         statusMenuItem.title = "\(state.icon) \(state.description)"
+    }
+
+    /// 公开方法：更新状态文本（用于显示权限等待等自定义状态）
+    func updateStatusText(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.statusMenuItem?.title = text
+        }
+    }
+
+    /// 公开方法：更新图标
+    func updateIcon(_ icon: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.statusItem?.button?.title = icon
+        }
     }
 
     private func updatePauseMenuItem(for state: MonitorState) {
@@ -155,6 +182,10 @@ class MenuBarController: NSObject {
         }
     }
 
+    @objc private func openLogDirectory() {
+        Logger.shared.openLogDirectory()
+    }
+
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "关于 StillMusicWhenBack"
@@ -179,7 +210,7 @@ class MenuBarController: NSObject {
     }
 
     @objc private func quit() {
-        print("[MenuBar] 用户请求退出")
+        logInfo("用户请求退出", module: "MenuBar")
 
         let alert = NSAlert()
         alert.messageText = "确认退出？"

@@ -75,82 +75,104 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkScreenRecordingPermission(permissionManager: PermissionManager) async {
-        if !permissionManager.hasScreenRecordingPermission() {
-            logWarning("缺少屏幕录制权限，正在请求...", module: "App")
-
-            // 自动请求权限
-            permissionManager.requestScreenRecordingPermission()
-
-            // 持续轮询等待权限授予（不限时间，每秒检查一次）
-            logInfo("等待用户授予屏幕录制权限...", module: "App")
-            logInfo("请在系统设置中勾选 StillMusicWhenBack 或 Terminal", module: "App")
-
-            var attempts = 0
-            while !permissionManager.hasScreenRecordingPermission() {
-                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
-                attempts += 1
-
-                // 每5次检查输出一次日志
-                if attempts % 5 == 0 {
-                    logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
-                }
-
-                // 每30秒提醒一次
-                if attempts % 30 == 0 {
-                    logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
-                    logInfo("请确认已在系统设置中勾选权限", module: "App")
-                }
-            }
-
-            logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
-
-            // 权限授予后，尝试重新启动音频监控
-            logInfo("检测到权限授予，正在重新启动音频监控...", module: "App")
-            Task {
-                do {
-                    try await audioMonitor?.startMonitoring()
-                    logSuccess("音频监控已成功启动", module: "App")
-                } catch {
-                    logError("音频监控重启失败: \(error)", module: "App")
-                }
-            }
-        } else {
+        // 先检查一次，如果已有权限就不请求
+        if permissionManager.hasScreenRecordingPermission() {
             logSuccess("已有屏幕录制权限", module: "App")
+            return
+        }
+
+        // 更新托盘图标显示等待权限状态
+        menuBarController?.updateIcon("⚠️")
+        menuBarController?.updateStatusText("⚠️ 等待屏幕录制权限...")
+
+        // 没有权限，只请求一次
+        logWarning("缺少屏幕录制权限，正在请求...", module: "App")
+        permissionManager.requestScreenRecordingPermission()
+
+        // 持续检测直到有权限（不再重复请求）
+        logInfo("等待用户授予屏幕录制权限...", module: "App")
+        logInfo("请在系统设置中勾选 StillMusicWhenBack 或 Terminal", module: "App")
+
+        var attempts = 0
+        while !permissionManager.hasScreenRecordingPermission() {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+            attempts += 1
+
+            // 每5次检查输出一次日志
+            if attempts % 5 == 0 {
+                logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
+                // 更新托盘状态显示等待时间
+                menuBarController?.updateStatusText("⚠️ 等待屏幕录制权限... (\(attempts)秒)")
+            }
+
+            // 每30秒提醒一次
+            if attempts % 30 == 0 {
+                logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
+                logInfo("请确认已在系统设置中勾选权限", module: "App")
+            }
+        }
+
+        logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
+
+        // 恢复正常图标
+        menuBarController?.updateIcon("✅")
+        menuBarController?.updateStatusText("✅ 屏幕录制权限已授予")
+
+        // 权限授予后，重新启动音频监控
+        logInfo("检测到权限授予，正在重新启动音频监控...", module: "App")
+        Task {
+            do {
+                try await audioMonitor?.startMonitoring()
+                logSuccess("音频监控已成功启动", module: "App")
+            } catch {
+                logError("音频监控重启失败: \(error)", module: "App")
+            }
         }
     }
 
     private func checkAccessibilityPermission(permissionManager: PermissionManager) async {
-        if !permissionManager.hasAccessibilityPermission() {
-            logWarning("缺少辅助功能权限，正在请求...", module: "App")
+        // 先检查一次，如果已有权限就不请求
+        if permissionManager.hasAccessibilityPermission() {
+            logSuccess("已有辅助功能权限", module: "App")
+            return
+        }
 
-            // 自动请求权限（会弹出系统对话框）
-            permissionManager.requestAccessibilityPermission()
+        // 更新托盘图标显示等待权限状态
+        menuBarController?.updateIcon("⚠️")
+        menuBarController?.updateStatusText("⚠️ 等待辅助功能权限...")
 
-            // 持续轮询等待权限授予
-            logInfo("等待用户授予辅助功能权限...", module: "App")
-            logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
+        // 没有权限，只请求一次
+        logWarning("缺少辅助功能权限，正在请求...", module: "App")
+        permissionManager.requestAccessibilityPermission()
 
-            var attempts = 0
-            while !permissionManager.hasAccessibilityPermission() {
-                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
-                attempts += 1
+        // 持续检测直到有权限（不再重复请求）
+        logInfo("等待用户授予辅助功能权限...", module: "App")
+        logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
 
-                // 每5次检查输出一次日志
-                if attempts % 5 == 0 {
-                    logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
-                }
+        var attempts = 0
+        while !permissionManager.hasAccessibilityPermission() {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+            attempts += 1
 
-                // 每30秒提醒一次
-                if attempts % 30 == 0 {
-                    logWarning("已等待 \(attempts) 秒，仍未检测到辅助功能权限", module: "App")
-                    logInfo("路径: 系统设置 → 隐私与安全性 → 辅助功能", module: "App")
-                }
+            // 每5次检查输出一次日志
+            if attempts % 5 == 0 {
+                logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
+                // 更新托盘状态显示等待时间
+                menuBarController?.updateStatusText("⚠️ 等待辅助功能权限... (\(attempts)秒)")
             }
 
-            logSuccess("辅助功能权限已授予！（第 \(attempts) 次检查）", module: "App")
-        } else {
-            logSuccess("已有辅助功能权限", module: "App")
+            // 每30秒提醒一次
+            if attempts % 30 == 0 {
+                logWarning("已等待 \(attempts) 秒，仍未检测到辅助功能权限", module: "App")
+                logInfo("路径: 系统设置 → 隐私与安全性 → 辅助功能", module: "App")
+            }
         }
+
+        logSuccess("辅助功能权限已授予！（第 \(attempts) 次检查）", module: "App")
+
+        // 恢复正常图标
+        menuBarController?.updateIcon("✅")
+        menuBarController?.updateStatusText("✅ 辅助功能权限已授予")
     }
 
     private func showPermissionAlert() async {
