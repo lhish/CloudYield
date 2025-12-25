@@ -83,11 +83,11 @@ class AppAudioStream: NSObject {
             delegate: self
         )
 
-        // 添加音频输出
+        // 添加音频输出（使用 nil 队列，像 OBS 一样）
         try stream?.addStreamOutput(
             self,
             type: .audio,
-            sampleHandlerQueue: audioQueue
+            sampleHandlerQueue: nil
         )
 
         // 添加视频输出（像 OBS 一样，用于消除 SCK 错误，帧会在回调中被丢弃）
