@@ -8,14 +8,42 @@
 import Foundation
 import AppKit
 import ApplicationServices
+import ScreenCaptureKit
 
 class PermissionManager {
     // MARK: - Screen Recording Permission
 
     /// 检查是否有屏幕录制权限
     func hasScreenRecordingPermission() -> Bool {
-        // 使用 CGPreflightScreenCaptureAccess 检查权限
-        return CGPreflightScreenCaptureAccess()
+        // 方法1: 使用 CGPreflightScreenCaptureAccess
+        let preflight = CGPreflightScreenCaptureAccess()
+
+        // 方法2: 尝试实际捕获来验证（更可靠）
+        // 如果 preflight 返回 true，直接返回
+        if preflight {
+            return true
+        }
+
+        // 如果 preflight 返回 false，可能是缓存问题，尝试实际检测
+        // 通过尝试获取可共享内容来验证权限
+        do {
+            let semaphore = DispatchSemaphore(value: 0)
+            var hasPermission = false
+
+            Task {
+                do {
+                    _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                    hasPermission = true
+                } catch {
+                    hasPermission = false
+                }
+                semaphore.signal()
+            }
+
+            // 等待最多 2 秒
+            _ = semaphore.wait(timeout: .now() + 2)
+            return hasPermission
+        }
     }
 
     /// 请求屏幕录制权限

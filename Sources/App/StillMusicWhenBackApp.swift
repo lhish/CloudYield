@@ -68,71 +68,86 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let permissionManager = permissionManager else { return }
 
         // 检查屏幕录制权限（用于捕获系统音频）
+        await checkScreenRecordingPermission(permissionManager: permissionManager)
+
+        // 检查辅助功能权限（用于控制网易云音乐）
+        await checkAccessibilityPermission(permissionManager: permissionManager)
+    }
+
+    private func checkScreenRecordingPermission(permissionManager: PermissionManager) async {
         if !permissionManager.hasScreenRecordingPermission() {
             logWarning("缺少屏幕录制权限，正在请求...", module: "App")
 
             // 自动请求权限
             permissionManager.requestScreenRecordingPermission()
 
-            // 轮询等待权限授予（最多等待10秒）
-            logDebug("开始轮询检查屏幕录制权限...", module: "App")
-            var attempts = 0
-            let maxAttempts = 20 // 10秒（每次0.5秒）
+            // 持续轮询等待权限授予（不限时间，每秒检查一次）
+            logInfo("等待用户授予屏幕录制权限...", module: "App")
+            logInfo("请在系统设置中勾选 StillMusicWhenBack 或 Terminal", module: "App")
 
-            while attempts < maxAttempts {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            var attempts = 0
+            while !permissionManager.hasScreenRecordingPermission() {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
                 attempts += 1
 
-                if permissionManager.hasScreenRecordingPermission() {
-                    logSuccess("屏幕录制权限已授予（第\(attempts)次检查）", module: "App")
-                    break
+                // 每5次检查输出一次日志
+                if attempts % 5 == 0 {
+                    logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
                 }
 
-                logDebug("权限检查 \(attempts)/\(maxAttempts)：未授予", module: "App")
+                // 每30秒提醒一次
+                if attempts % 30 == 0 {
+                    logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
+                    logInfo("请确认已在系统设置中勾选权限", module: "App")
+                }
             }
 
-            // 最终检查
-            if !permissionManager.hasScreenRecordingPermission() {
-                logWarning("10秒后仍缺少屏幕录制权限", module: "App")
-                logInfo("可能用户拒绝了权限请求，或者需要手动设置", module: "App")
-                await showPermissionAlert()
+            logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
+
+            // 权限授予后，尝试重新启动音频监控
+            logInfo("检测到权限授予，正在重新启动音频监控...", module: "App")
+            Task {
+                do {
+                    try await audioMonitor?.startMonitoring()
+                    logSuccess("音频监控已成功启动", module: "App")
+                } catch {
+                    logError("音频监控重启失败: \(error)", module: "App")
+                }
             }
         } else {
             logSuccess("已有屏幕录制权限", module: "App")
         }
+    }
 
-        // 检查辅助功能权限（用于控制网易云音乐）
+    private func checkAccessibilityPermission(permissionManager: PermissionManager) async {
         if !permissionManager.hasAccessibilityPermission() {
             logWarning("缺少辅助功能权限，正在请求...", module: "App")
 
             // 自动请求权限（会弹出系统对话框）
             permissionManager.requestAccessibilityPermission()
 
-            // 轮询等待权限授予（最多等待10秒）
-            logDebug("开始轮询检查辅助功能权限...", module: "App")
-            var attempts = 0
-            let maxAttempts = 20 // 10秒
+            // 持续轮询等待权限授予
+            logInfo("等待用户授予辅助功能权限...", module: "App")
+            logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
 
-            while attempts < maxAttempts {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            var attempts = 0
+            while !permissionManager.hasAccessibilityPermission() {
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
                 attempts += 1
 
-                if permissionManager.hasAccessibilityPermission() {
-                    logSuccess("辅助功能权限已授予（第\(attempts)次检查）", module: "App")
-                    break
+                // 每5次检查输出一次日志
+                if attempts % 5 == 0 {
+                    logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
                 }
 
-                logDebug("权限检查 \(attempts)/\(maxAttempts)：未授予", module: "App")
+                // 每30秒提醒一次
+                if attempts % 30 == 0 {
+                    logWarning("已等待 \(attempts) 秒，仍未检测到辅助功能权限", module: "App")
+                    logInfo("路径: 系统设置 → 隐私与安全性 → 辅助功能", module: "App")
+                }
             }
 
-            if permissionManager.hasAccessibilityPermission() {
-                logSuccess("辅助功能权限已授予", module: "App")
-            } else {
-                logWarning("10秒后仍缺少辅助功能权限", module: "App")
-                logInfo("请在系统设置中授予辅助功能权限", module: "App")
-                logInfo("路径: 系统设置 → 隐私与安全性 → 辅助功能", module: "App")
-                logInfo("授予后请重启应用", module: "App")
-            }
+            logSuccess("辅助功能权限已授予！（第 \(attempts) 次检查）", module: "App")
         } else {
             logSuccess("已有辅助功能权限", module: "App")
         }
