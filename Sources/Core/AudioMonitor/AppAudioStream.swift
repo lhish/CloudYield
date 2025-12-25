@@ -74,7 +74,7 @@ class AppAudioStream: NSObject {
             exceptingWindows: []
         )
 
-        logDebug("创建过滤器: display+includingApplications(\(application.applicationName))", module: "AppAudioStream")
+        logDebug("创建过滤器: display+including(\(application.applicationName))", module: "AppAudioStream")
 
         // 创建流
         stream = SCStream(
