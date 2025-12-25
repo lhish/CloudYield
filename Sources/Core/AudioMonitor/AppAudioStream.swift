@@ -51,12 +51,13 @@ class AppAudioStream: NSObject {
         config.channelCount = 1    // 单声道
         config.excludesCurrentProcessAudio = true
 
-        // 尝试完全禁用视频
-        config.width = 1
-        config.height = 1
-        config.minimumFrameInterval = CMTime(value: 1000, timescale: 1)  // 每1000秒1帧
-        config.queueDepth = 1
+        // 最小化视频配置（SCStream 要求必须有视频参数）
+        config.width = 2  // 最小有效值
+        config.height = 2
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
+        config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
+        config.scalesToFit = false
 
         // 获取显示器和应用，使用 OBS 的过滤器方式
         // display + includingApplications（而不是 desktopIndependentWindow）
@@ -82,18 +83,15 @@ class AppAudioStream: NSObject {
             delegate: self
         )
 
+        guard stream != nil else {
+            throw NSError(domain: "AppAudioStream", code: -2,
+                          userInfo: [NSLocalizedDescriptionKey: "SCStream 初始化失败: \(application.applicationName)"])
+        }
+
         // 添加音频输出
         try stream?.addStreamOutput(
             self,
             type: .audio,
-            sampleHandlerQueue: nil
-        )
-
-        // 必须添加视频输出，否则 SCStream 无法启动
-        // 但我们配置了最小化的视频参数（1x1像素，每1000秒1帧）来减少资源占用
-        try stream?.addStreamOutput(
-            self,
-            type: .screen,
             sampleHandlerQueue: nil
         )
 
