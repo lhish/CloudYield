@@ -113,15 +113,26 @@ echo ""
 
 # 7. 代码签名（使用固定的 identifier + Hardened Runtime 避免每次重签导致权限丢失）
 echo "7️⃣  代码签名..."
+
+# 先移除已有签名
+codesign --remove-signature "$APP_DIR" 2>/dev/null || true
+
 # 使用 ad-hoc 签名但保持 identifier 一致，并启用 Hardened Runtime
+# 关键：使用 --preserve-metadata 来保持元数据一致性
 codesign --force --deep --sign - \
     --identifier "com.yourdomain.stillmusicwhenback" \
     --entitlements "$CONTENTS_DIR/Entitlements.plist" \
     --options runtime \
+    --timestamp=none \
     "$APP_DIR"
 
 if [ $? -eq 0 ]; then
     echo "✅ 代码签名完成（Hardened Runtime）"
+
+    # 显示签名信息
+    echo ""
+    echo "📋 签名信息："
+    codesign -dvvv "$APP_DIR" 2>&1 | grep -E "(Identifier|CDHash)" | head -3
 else
     echo "⚠️  代码签名失败（不影响使用）"
 fi
