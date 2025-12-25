@@ -30,7 +30,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionManager: PermissionManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("[App] 应用启动...")
+        logInfo("应用启动...", module: "App")
+        logInfo("日志文件位置: \(Logger.shared.getLogFilePath())", module: "App")
 
         // 初始化权限管理器
         permissionManager = PermissionManager()
@@ -46,11 +47,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 配置开机自启动（首次启动时提示用户）
         configureLaunchAtLogin()
 
-        print("[App] 应用启动完成")
+        logSuccess("应用启动完成", module: "App")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        print("[App] 应用即将退出...")
+        logInfo("应用即将退出...", module: "App")
 
         // 停止音频监控
         audioMonitor?.stopMonitoring()
@@ -58,7 +59,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 清理资源
         cleanup()
 
-        print("[App] 应用已退出")
+        logInfo("应用已退出", module: "App")
     }
 
     // MARK: - Private Methods
@@ -68,43 +69,72 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 检查屏幕录制权限（用于捕获系统音频）
         if !permissionManager.hasScreenRecordingPermission() {
-            print("[App] ⚠️  缺少屏幕录制权限，正在请求...")
+            logWarning("缺少屏幕录制权限，正在请求...", module: "App")
 
             // 自动请求权限
             permissionManager.requestScreenRecordingPermission()
 
-            // 等待一小段时间让系统显示权限对话框
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+            // 轮询等待权限授予（最多等待10秒）
+            logDebug("开始轮询检查屏幕录制权限...", module: "App")
+            var attempts = 0
+            let maxAttempts = 20 // 10秒（每次0.5秒）
 
-            // 再次检查权限
+            while attempts < maxAttempts {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+                attempts += 1
+
+                if permissionManager.hasScreenRecordingPermission() {
+                    logSuccess("屏幕录制权限已授予（第\(attempts)次检查）", module: "App")
+                    break
+                }
+
+                logDebug("权限检查 \(attempts)/\(maxAttempts)：未授予", module: "App")
+            }
+
+            // 最终检查
             if !permissionManager.hasScreenRecordingPermission() {
-                print("[App] ⚠️  仍缺少屏幕录制权限，显示设置指引")
+                logWarning("10秒后仍缺少屏幕录制权限", module: "App")
+                logInfo("可能用户拒绝了权限请求，或者需要手动设置", module: "App")
                 await showPermissionAlert()
-            } else {
-                print("[App] ✅ 屏幕录制权限已授予")
             }
         } else {
-            print("[App] ✅ 已有屏幕录制权限")
+            logSuccess("已有屏幕录制权限", module: "App")
         }
 
         // 检查辅助功能权限（用于控制网易云音乐）
         if !permissionManager.hasAccessibilityPermission() {
-            print("[App] ⚠️  缺少辅助功能权限，正在请求...")
+            logWarning("缺少辅助功能权限，正在请求...", module: "App")
 
             // 自动请求权限（会弹出系统对话框）
             permissionManager.requestAccessibilityPermission()
 
-            // 等待一小段时间
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+            // 轮询等待权限授予（最多等待10秒）
+            logDebug("开始轮询检查辅助功能权限...", module: "App")
+            var attempts = 0
+            let maxAttempts = 20 // 10秒
+
+            while attempts < maxAttempts {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+                attempts += 1
+
+                if permissionManager.hasAccessibilityPermission() {
+                    logSuccess("辅助功能权限已授予（第\(attempts)次检查）", module: "App")
+                    break
+                }
+
+                logDebug("权限检查 \(attempts)/\(maxAttempts)：未授予", module: "App")
+            }
 
             if permissionManager.hasAccessibilityPermission() {
-                print("[App] ✅ 辅助功能权限已授予")
+                logSuccess("辅助功能权限已授予", module: "App")
             } else {
-                print("[App] 💡 请在系统设置中授予辅助功能权限")
-                print("[App] 💡 路径: 系统设置 → 隐私与安全性 → 辅助功能")
+                logWarning("10秒后仍缺少辅助功能权限", module: "App")
+                logInfo("请在系统设置中授予辅助功能权限", module: "App")
+                logInfo("路径: 系统设置 → 隐私与安全性 → 辅助功能", module: "App")
+                logInfo("授予后请重启应用", module: "App")
             }
         } else {
-            print("[App] ✅ 已有辅助功能权限")
+            logSuccess("已有辅助功能权限", module: "App")
         }
     }
 
@@ -156,15 +186,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             do {
                 try await audioMonitor?.startMonitoring()
-                print("[App] ✅ 音频监控已启动")
+                logSuccess("音频监控已启动", module: "App")
             } catch {
-                print("[App] ❌ 音频监控启动失败: \(error)")
+                logError("音频监控启动失败: \(error)", module: "App")
             }
         }
 
         // 6. 启动状态引擎
         stateEngine?.start()
-        print("[App] ✅ 状态引擎已启动")
+        logSuccess("状态引擎已启动", module: "App")
     }
 
     private func configureLaunchAtLogin() {

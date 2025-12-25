@@ -34,7 +34,7 @@ class AudioLevelDetector {
 
     /// 开始基线学习
     func startBaselineLearning() {
-        print("[AudioDetector] 开始学习环境噪音基线（10秒）...")
+        logInfo("开始学习环境噪音基线（10秒）...", module: "AudioDetector")
         isLearningBaseline = true
         baselineSamples = []
 
@@ -46,17 +46,17 @@ class AudioLevelDetector {
 
     /// 处理音频缓冲区
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        print("[AudioDetector] 🔧 [DEBUG] 开始处理音频缓冲区...")
+        logDebug("开始处理音频缓冲区...", module: "AudioDetector")
 
         guard let channelData = buffer.floatChannelData else {
-            print("[AudioDetector] ❌ [DEBUG] channelData 为 nil!")
+            logError("channelData 为 nil!", module: "AudioDetector")
             return
         }
 
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
 
-        print("[AudioDetector] 🔧 [DEBUG] 帧长度: \(frameLength), 声道数: \(channelCount)")
+        logDebug("帧长度: \(frameLength), 声道数: \(channelCount)", module: "AudioDetector")
 
         // 计算 RMS（均方根）
         var rms: Float = 0.0
@@ -77,11 +77,11 @@ class AudioLevelDetector {
         // 转换为 dB
         let dB = amplitudeToDecibels(rms)
 
-        print("[AudioDetector] 🔧 [DEBUG] RMS: \(String(format: "%.6f", rms)), dB: \(String(format: "%.1f", dB))")
+        logDebug("RMS: \(String(format: "%.6f", rms)), dB: \(String(format: "%.1f", dB))", module: "AudioDetector")
 
         // 如果正在学习基线
         if isLearningBaseline {
-            print("[AudioDetector] 🔧 [DEBUG] 正在学习基线，样本数: \(baselineSamples.count + 1)")
+            logDebug("正在学习基线，样本数: \(baselineSamples.count + 1)", module: "AudioDetector")
             baselineSamples.append(dB)
             return
         }
@@ -99,19 +99,19 @@ class AudioLevelDetector {
         let threshold = baselineNoiseLevel + thresholdOffset
         let hasSignificantSound = smoothedLevel > threshold
 
-        print("[AudioDetector] 🔧 [DEBUG] 平滑音量: \(String(format: "%.1f", smoothedLevel)) dB, 阈值: \(String(format: "%.1f", threshold)) dB, 有声音: \(hasSignificantSound)")
+        logDebug("平滑音量: \(String(format: "%.1f", smoothedLevel)) dB, 阈值: \(String(format: "%.1f", threshold)) dB, 有声音: \(hasSignificantSound)", module: "AudioDetector")
 
         // 只在状态变化时触发回调
         if hasSignificantSound != lastSignificantSound {
             lastSignificantSound = hasSignificantSound
 
             if hasSignificantSound {
-                print("[AudioDetector] 🔊 检测到显著声音: \(String(format: "%.1f", smoothedLevel)) dB (基线: \(String(format: "%.1f", baselineNoiseLevel)) dB)")
+                logInfo("🔊 检测到显著声音: \(String(format: "%.1f", smoothedLevel)) dB (基线: \(String(format: "%.1f", baselineNoiseLevel)) dB)", module: "AudioDetector")
             } else {
-                print("[AudioDetector] 🔇 声音消失")
+                logInfo("🔇 声音消失", module: "AudioDetector")
             }
 
-            print("[AudioDetector] 🔧 [DEBUG] 触发回调，hasSound: \(hasSignificantSound)")
+            logDebug("触发回调，hasSound: \(hasSignificantSound)", module: "AudioDetector")
             onSignificantSoundDetected?(hasSignificantSound)
         }
     }
@@ -122,7 +122,7 @@ class AudioLevelDetector {
         isLearningBaseline = false
 
         guard !baselineSamples.isEmpty else {
-            print("[AudioDetector] ⚠️  基线学习失败，使用默认值")
+            logWarning("基线学习失败，使用默认值", module: "AudioDetector")
             return
         }
 
@@ -131,8 +131,8 @@ class AudioLevelDetector {
         let medianIndex = sortedSamples.count / 2
         baselineNoiseLevel = sortedSamples[medianIndex]
 
-        print("[AudioDetector] ✅ 基线学习完成: \(String(format: "%.1f", baselineNoiseLevel)) dB")
-        print("[AudioDetector] 检测阈值: \(String(format: "%.1f", baselineNoiseLevel + thresholdOffset)) dB")
+        logSuccess("基线学习完成: \(String(format: "%.1f", baselineNoiseLevel)) dB", module: "AudioDetector")
+        logInfo("检测阈值: \(String(format: "%.1f", baselineNoiseLevel + thresholdOffset)) dB", module: "AudioDetector")
 
         baselineSamples = []
     }

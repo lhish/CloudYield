@@ -48,13 +48,13 @@ class StateTransitionEngine {
 
     /// 启动状态引擎
     func start() {
-        print("[StateEngine] 启动状态引擎")
+        logInfo("启动状态引擎", module: "StateEngine")
         transitionTo(.monitoring)
     }
 
     /// 停止状态引擎
     func stop() {
-        print("[StateEngine] 停止状态引擎")
+        logInfo("停止状态引擎", module: "StateEngine")
         detectTimer?.stop()
         resumeTimer?.stop()
         transitionTo(.idle)
@@ -62,7 +62,7 @@ class StateTransitionEngine {
 
     /// 暂停监控（用户手动）
     func pauseMonitoring() {
-        print("[StateEngine] 用户暂停监控")
+        logInfo("用户暂停监控", module: "StateEngine")
         detectTimer?.stop()
         resumeTimer?.stop()
         transitionTo(.paused)
@@ -70,13 +70,13 @@ class StateTransitionEngine {
 
     /// 恢复监控（用户手动）
     func resumeMonitoring() {
-        print("[StateEngine] 用户恢复监控")
+        logInfo("用户恢复监控", module: "StateEngine")
         transitionTo(.monitoring)
     }
 
     /// 音频级别变化回调
     func onAudioLevelChanged(hasSound: Bool) {
-        print("[StateEngine] 🔧 [DEBUG] 收到音频级别变化回调，hasSound: \(hasSound)")
+        logDebug("收到音频级别变化回调，hasSound: \(hasSound)", module: "StateEngine")
         handleAudioLevelChange(hasSound: hasSound)
     }
 
@@ -92,7 +92,7 @@ class StateTransitionEngine {
         case .monitoring:
             if hasSound {
                 // 检测到声音，开始计时
-                print("[StateEngine] 检测到声音，开始计时...")
+                logInfo("检测到声音，开始计时...", module: "StateEngine")
                 detectTimer?.start()
                 transitionTo(.detectingOtherSound)
             }
@@ -100,7 +100,7 @@ class StateTransitionEngine {
         case .detectingOtherSound:
             if !hasSound {
                 // 声音消失，取消计时
-                print("[StateEngine] 声音消失，取消计时")
+                logInfo("声音消失，取消计时", module: "StateEngine")
                 detectTimer?.stop()
                 transitionTo(.monitoring)
             }
@@ -109,7 +109,7 @@ class StateTransitionEngine {
         case .musicPaused:
             if !hasSound {
                 // 其他声音停止，开始恢复计时
-                print("[StateEngine] 其他声音停止，开始恢复计时...")
+                logInfo("其他声音停止，开始恢复计时...", module: "StateEngine")
                 resumeTimer?.start()
                 transitionTo(.waitingResume)
             }
@@ -117,7 +117,7 @@ class StateTransitionEngine {
         case .waitingResume:
             if hasSound {
                 // 再次检测到声音，取消恢复
-                print("[StateEngine] 再次检测到声音，取消恢复")
+                logInfo("再次检测到声音，取消恢复", module: "StateEngine")
                 resumeTimer?.stop()
                 transitionTo(.musicPaused)
             }
@@ -130,13 +130,13 @@ class StateTransitionEngine {
     }
 
     private func onDetectTimerExpired() {
-        print("[StateEngine] ⏰ 检测计时器到期")
+        logInfo("⏰ 检测计时器到期", module: "StateEngine")
 
         guard currentState == .detectingOtherSound else { return }
 
         // 检查网易云是否正在播放
         if musicController.isPlaying() {
-            print("[StateEngine] 网易云正在播放，准备暂停...")
+            logInfo("网易云正在播放，准备暂停...", module: "StateEngine")
             wasMusicPlayingBeforePause = true
 
             // 暂停网易云
@@ -144,24 +144,24 @@ class StateTransitionEngine {
 
             transitionTo(.musicPaused)
         } else {
-            print("[StateEngine] 网易云未在播放，不需要操作")
+            logInfo("网易云未在播放，不需要操作", module: "StateEngine")
             wasMusicPlayingBeforePause = false
             transitionTo(.monitoring)
         }
     }
 
     private func onResumeTimerExpired() {
-        print("[StateEngine] ⏰ 恢复计时器到期")
+        logInfo("⏰ 恢复计时器到期", module: "StateEngine")
 
         guard currentState == .waitingResume else { return }
 
         // 只有之前网易云在播放，才恢复
         if wasMusicPlayingBeforePause {
-            print("[StateEngine] 恢复网易云播放...")
+            logInfo("恢复网易云播放...", module: "StateEngine")
             musicController.play()
             wasMusicPlayingBeforePause = false
         } else {
-            print("[StateEngine] 网易云之前未在播放，不恢复")
+            logInfo("网易云之前未在播放，不恢复", module: "StateEngine")
         }
 
         transitionTo(.monitoring)
@@ -171,7 +171,7 @@ class StateTransitionEngine {
         let oldState = currentState
         currentState = newState
 
-        print("[StateEngine] 状态变化: \(oldState.description) → \(newState.description)")
+        logInfo("状态变化: \(oldState.description) → \(newState.description)", module: "StateEngine")
 
         // 触发状态变化回调
         DispatchQueue.main.async { [weak self] in

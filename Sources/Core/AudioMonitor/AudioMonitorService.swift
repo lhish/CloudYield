@@ -41,26 +41,26 @@ class AudioMonitorService: NSObject {
     /// 开始监控系统音频
     func startMonitoring() async throws {
         guard !isMonitoring else {
-            print("[AudioMonitor] 已经在监控中")
+            logInfo("已经在监控中", module: "AudioMonitor")
             return
         }
 
-        print("[AudioMonitor] 🔧 [DEBUG] 正在启动音频监控...")
-        print("[AudioMonitor] 🔧 [DEBUG] 检测器已设置: \(audioLevelDetector != nil)")
-        print("[AudioMonitor] 🔧 [DEBUG] 回调已设置: \(onAudioLevelChanged != nil)")
+        logDebug("正在启动音频监控...", module: "AudioMonitor")
+        logDebug("检测器已设置: \(audioLevelDetector != nil)", module: "AudioMonitor")
+        logDebug("回调已设置: \(onAudioLevelChanged != nil)", module: "AudioMonitor")
 
         do {
             // 1. 获取可捕获的内容
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤1: 获取可捕获内容...")
+            logDebug("步骤1: 获取可捕获内容...", module: "AudioMonitor")
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false,
                 onScreenWindowsOnly: false
             )
-            print("[AudioMonitor] 🔧 [DEBUG] 找到 \(content.displays.count) 个显示器")
-            print("[AudioMonitor] 🔧 [DEBUG] 找到 \(content.windows.count) 个窗口")
+            logDebug("找到 \(content.displays.count) 个显示器", module: "AudioMonitor")
+            logDebug("找到 \(content.windows.count) 个窗口", module: "AudioMonitor")
 
             // 2. 创建配置
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤2: 创建音频配置...")
+            logDebug("步骤2: 创建音频配置...", module: "AudioMonitor")
             let config = SCStreamConfiguration()
 
             // 只捕获音频，不捕获视频
@@ -70,51 +70,51 @@ class AudioMonitorService: NSObject {
             // 音频配置
             config.sampleRate = 48000 // 48kHz 采样率
             config.channelCount = 2   // 立体声
-            print("[AudioMonitor] 🔧 [DEBUG] 音频配置: 采样率=\(config.sampleRate), 声道=\(config.channelCount)")
+            logDebug("音频配置: 采样率=\(config.sampleRate), 声道=\(config.channelCount)", module: "AudioMonitor")
 
             // 3. 创建内容过滤器（捕获所有音频）
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤3: 创建内容过滤器...")
+            logDebug("步骤3: 创建内容过滤器...", module: "AudioMonitor")
             guard let display = content.displays.first else {
-                print("[AudioMonitor] ❌ [DEBUG] 没有找到可用的显示器！")
+                logError("没有找到可用的显示器！", module: "AudioMonitor")
                 throw NSError(domain: "AudioMonitor", code: -1, userInfo: [NSLocalizedDescriptionKey: "没有找到可用的显示器"])
             }
-            print("[AudioMonitor] 🔧 [DEBUG] 使用显示器: \(display)")
+            logDebug("使用显示器: \(display)", module: "AudioMonitor")
 
             let filter = SCContentFilter(display: display, excludingWindows: [])
-            print("[AudioMonitor] 🔧 [DEBUG] 过滤器创建成功")
+            logDebug("过滤器创建成功", module: "AudioMonitor")
 
             // 4. 创建流
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤4: 创建 SCStream...")
+            logDebug("步骤4: 创建 SCStream...", module: "AudioMonitor")
             stream = SCStream(
                 filter: filter,
                 configuration: config,
                 delegate: self
             )
-            print("[AudioMonitor] 🔧 [DEBUG] SCStream 创建成功")
+            logDebug("SCStream 创建成功", module: "AudioMonitor")
 
             // 5. 添加音频输出处理
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤5: 添加音频输出处理...")
+            logDebug("步骤5: 添加音频输出处理...", module: "AudioMonitor")
             try stream?.addStreamOutput(
                 self,
                 type: .audio,
                 sampleHandlerQueue: audioQueue
             )
-            print("[AudioMonitor] 🔧 [DEBUG] 音频输出处理已添加")
+            logDebug("音频输出处理已添加", module: "AudioMonitor")
 
             // 6. 启动捕获
-            print("[AudioMonitor] 🔧 [DEBUG] 步骤6: 启动捕获...")
+            logDebug("步骤6: 启动捕获...", module: "AudioMonitor")
             try await stream?.startCapture()
 
             isMonitoring = true
-            print("[AudioMonitor] ✅ 音频监控已启动成功！")
+            logSuccess("音频监控已启动成功！", module: "AudioMonitor")
 
             // 启动基线学习
-            print("[AudioMonitor] 🔧 [DEBUG] 启动基线学习...")
+            logDebug("启动基线学习...", module: "AudioMonitor")
             audioLevelDetector?.startBaselineLearning()
 
         } catch {
-            print("[AudioMonitor] ❌ 启动失败: \(error)")
-            print("[AudioMonitor] ❌ [DEBUG] 错误详情: \(error.localizedDescription)")
+            logError("启动失败: \(error)", module: "AudioMonitor")
+            logError("错误详情: \(error.localizedDescription)", module: "AudioMonitor")
             throw error
         }
     }
@@ -123,16 +123,16 @@ class AudioMonitorService: NSObject {
     func stopMonitoring() {
         guard isMonitoring else { return }
 
-        print("[AudioMonitor] 停止音频监控...")
+        logInfo("停止音频监控...", module: "AudioMonitor")
 
         Task {
             do {
                 try await stream?.stopCapture()
                 stream = nil
                 isMonitoring = false
-                print("[AudioMonitor] ✅ 音频监控已停止")
+                logSuccess("音频监控已停止", module: "AudioMonitor")
             } catch {
-                print("[AudioMonitor] ❌ 停止失败: \(error)")
+                logError("停止失败: \(error)", module: "AudioMonitor")
             }
         }
     }
@@ -201,7 +201,7 @@ class AudioMonitorService: NSObject {
 // MARK: - SCStreamDelegate
 extension AudioMonitorService: SCStreamDelegate {
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        print("[AudioMonitor] ❌ 流停止，错误: \(error)")
+        logError("流停止，错误: \(error)", module: "AudioMonitor")
         isMonitoring = false
     }
 }
@@ -215,11 +215,11 @@ extension AudioMonitorService: SCStreamOutput {
     ) {
         // 只处理音频输出
         guard outputType == .audio else {
-            print("[AudioMonitor] 🔧 [DEBUG] 收到非音频输出，类型: \(outputType)")
+            logDebug("收到非音频输出，类型: \(outputType)", module: "AudioMonitor")
             return
         }
 
-        print("[AudioMonitor] 🔧 [DEBUG] 收到音频缓冲区")
+        logDebug("收到音频缓冲区", module: "AudioMonitor")
 
         // 处理音频缓冲区
         processAudioBuffer(sampleBuffer)

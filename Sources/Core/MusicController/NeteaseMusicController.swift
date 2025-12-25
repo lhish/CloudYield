@@ -44,11 +44,11 @@ class NeteaseMusicController {
     /// 暂停播放
     func pause() {
         guard isRunning() else {
-            print("[MusicController] 网易云音乐未运行")
+            logWarning("网易云音乐未运行", module: "MusicController")
             return
         }
 
-        print("[MusicController] 暂停播放...")
+        logInfo("暂停播放...", module: "MusicController")
 
         // 方案1: 通过 AppleScript 点击菜单项
         let script = """
@@ -67,10 +67,10 @@ class NeteaseMusicController {
         let result = executeAppleScript(script)
 
         if result.contains("success") {
-            print("[MusicController] ✅ 已暂停")
+            logSuccess("已暂停", module: "MusicController")
             lastKnownState = .paused
         } else {
-            print("[MusicController] ⚠️  暂停失败，尝试备用方案...")
+            logWarning("暂停失败，尝试备用方案...", module: "MusicController")
             // 备用方案：使用键盘快捷键
             pauseByKeyboard()
         }
@@ -79,11 +79,11 @@ class NeteaseMusicController {
     /// 恢复播放
     func play() {
         guard isRunning() else {
-            print("[MusicController] 网易云音乐未运行")
+            logWarning("网易云音乐未运行", module: "MusicController")
             return
         }
 
-        print("[MusicController] 恢复播放...")
+        logInfo("恢复播放...", module: "MusicController")
 
         let script = """
         tell application "System Events"
@@ -101,10 +101,10 @@ class NeteaseMusicController {
         let result = executeAppleScript(script)
 
         if result.contains("success") {
-            print("[MusicController] ✅ 已恢复播放")
+            logSuccess("已恢复播放", module: "MusicController")
             lastKnownState = .playing
         } else {
-            print("[MusicController] ⚠️  恢复失败，尝试备用方案...")
+            logWarning("恢复失败，尝试备用方案...", module: "MusicController")
             // 备用方案：使用键盘快捷键
             playByKeyboard()
         }
@@ -146,7 +146,7 @@ class NeteaseMusicController {
             // 如果菜单显示"播放"，说明当前是暂停状态
             return .paused
         } else {
-            print("[MusicController] ⚠️  无法获取播放状态: \(result)")
+            logWarning("无法获取播放状态: \(result)", module: "MusicController")
             return .unknown
         }
     }
@@ -158,7 +158,7 @@ class NeteaseMusicController {
         let output = appleScript?.executeAndReturnError(&error)
 
         if let error = error {
-            print("[MusicController] AppleScript 错误: \(error)")
+            logError("AppleScript 错误: \(error)", module: "MusicController")
             return "error: \(error)"
         }
 
@@ -203,6 +203,6 @@ class NeteaseMusicController {
         keyDown?.post(tap: .cghidEventTap)
         keyUp?.post(tap: .cghidEventTap)
 
-        print("[MusicController] 已发送空格键事件")
+        logInfo("已发送空格键事件", module: "MusicController")
     }
 }
