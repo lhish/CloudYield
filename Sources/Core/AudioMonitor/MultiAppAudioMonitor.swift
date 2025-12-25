@@ -81,7 +81,7 @@ class MultiAppAudioMonitor {
         logInfo("🎯 将自动监控 \(appsToMonitor.count) 个应用", module: "MultiAppMonitor")
 
         // 🧪 测试模式：只监控第一个应用
-        let testMode = true
+        let testMode = false
         let finalAppsToMonitor = testMode ? Array(appsToMonitor.prefix(1)) : appsToMonitor
 
         if testMode {
