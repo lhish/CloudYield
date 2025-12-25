@@ -63,15 +63,23 @@ class AudioMonitorService: NSObject {
             logDebug("步骤2: 创建音频配置...", module: "AudioMonitor")
             let config = SCStreamConfiguration()
 
-            // 只捕获音频，不捕获视频
+            // 音频捕获配置
             config.capturesAudio = true
-            config.excludesCurrentProcessAudio = true // 排除本应用的音频
-
-            // 音频配置
             config.sampleRate = 48000 // 48kHz 采样率
             config.channelCount = 2   // 立体声
+            config.excludesCurrentProcessAudio = false // 不排除本应用的音频,捕获所有系统音频
+
+            // ScreenCaptureKit要求：即使只捕获音频，也必须设置视频参数并启用视频捕获
+            // 我们设置最小的视频配置以减少性能开销
+            config.width = 2  // 最小宽度(必须>=1)
+            config.height = 2 // 最小高度(必须>=1)
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // 1 FPS 最低帧率
+            config.pixelFormat = kCVPixelFormatType_32BGRA // 设置像素格式
+            config.showsCursor = false // 不显示光标
+            config.scalesToFit = false // 不缩放
 
             logDebug("音频配置: 采样率=\(config.sampleRate), 声道=\(config.channelCount)", module: "AudioMonitor")
+            logDebug("视频配置(仅用于启用Stream): \(config.width)x\(config.height) @ 1fps", module: "AudioMonitor")
 
             // 3. 创建内容过滤器（捕获所有音频）
             logDebug("步骤3: 创建内容过滤器...", module: "AudioMonitor")
