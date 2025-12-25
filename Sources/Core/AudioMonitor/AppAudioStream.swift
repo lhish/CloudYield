@@ -42,22 +42,21 @@ class AppAudioStream: NSObject {
 
         logInfo("🎵 开始捕获应用音频: \(application.applicationName)", module: "AppAudioStream")
 
-        // 创建配置 - 只捕获音频
+        // 创建配置 - 只捕获音频，完全禁用视频
         let config = SCStreamConfiguration()
 
-        // 音频配置（最低采样率以大幅减少CPU占用）
+        // 音频配置
         config.capturesAudio = true
-        config.sampleRate = 10   // 8kHz（电话音质），最低可用采样率
+        config.sampleRate = 8000   // 8kHz
         config.channelCount = 1    // 单声道
         config.excludesCurrentProcessAudio = true
 
-        // 视频配置：最小化视频捕获开销
-        config.width = 8   // 最小尺寸
-        config.height = 8
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
-        config.pixelFormat = kCVPixelFormatType_32BGRA
+        // 尝试完全禁用视频
+        config.width = 1
+        config.height = 1
+        config.minimumFrameInterval = CMTime(value: 1000, timescale: 1)  // 每1000秒1帧
+        config.queueDepth = 1
         config.showsCursor = false
-        config.queueDepth = 2  // 降低队列深度以减少内存占用
 
         // 获取显示器和应用，使用 OBS 的过滤器方式
         // display + includingApplications（而不是 desktopIndependentWindow）
@@ -83,10 +82,18 @@ class AppAudioStream: NSObject {
             delegate: self
         )
 
-        // 只添加音频输出（不添加视频输出以避免显示录屏图标）
+        // 添加音频输出
         try stream?.addStreamOutput(
             self,
             type: .audio,
+            sampleHandlerQueue: nil
+        )
+
+        // 必须添加视频输出，否则 SCStream 无法启动
+        // 但我们配置了最小化的视频参数（1x1像素，每1000秒1帧）来减少资源占用
+        try stream?.addStreamOutput(
+            self,
+            type: .screen,
             sampleHandlerQueue: nil
         )
 
