@@ -95,7 +95,19 @@ echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 echo "✅ PkgInfo 已创建"
 echo ""
 
-# 6. 完成
+# 6. 代码签名（使用固定的 identifier 避免每次重签导致权限丢失）
+echo "6️⃣  代码签名..."
+# 使用 ad-hoc 签名但保持 identifier 一致
+codesign --force --deep --sign - --identifier "com.yourdomain.stillmusicwhenback" "$APP_DIR"
+
+if [ $? -eq 0 ]; then
+    echo "✅ 代码签名完成"
+else
+    echo "⚠️  代码签名失败（不影响使用）"
+fi
+echo ""
+
+# 7. 完成
 echo "=========================================="
 echo "✅ 应用包创建完成！"
 echo ""
