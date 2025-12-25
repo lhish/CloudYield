@@ -95,19 +95,39 @@ echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 echo "✅ PkgInfo 已创建"
 echo ""
 
-# 6. 代码签名（使用固定的 identifier 避免每次重签导致权限丢失）
-echo "6️⃣  代码签名..."
-# 使用 ad-hoc 签名但保持 identifier 一致
-codesign --force --deep --sign - --identifier "com.yourdomain.stillmusicwhenback" "$APP_DIR"
+# 6. 创建 Entitlements 文件
+echo "6️⃣  创建 Entitlements..."
+cat > "$CONTENTS_DIR/Entitlements.plist" << 'ENTITLEMENTS'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+
+echo "✅ Entitlements 已创建"
+echo ""
+
+# 7. 代码签名（使用固定的 identifier + Hardened Runtime 避免每次重签导致权限丢失）
+echo "7️⃣  代码签名..."
+# 使用 ad-hoc 签名但保持 identifier 一致，并启用 Hardened Runtime
+codesign --force --deep --sign - \
+    --identifier "com.yourdomain.stillmusicwhenback" \
+    --entitlements "$CONTENTS_DIR/Entitlements.plist" \
+    --options runtime \
+    "$APP_DIR"
 
 if [ $? -eq 0 ]; then
-    echo "✅ 代码签名完成"
+    echo "✅ 代码签名完成（Hardened Runtime）"
 else
     echo "⚠️  代码签名失败（不影响使用）"
 fi
 echo ""
 
-# 7. 完成
+# 8. 完成
 echo "=========================================="
 echo "✅ 应用包创建完成！"
 echo ""

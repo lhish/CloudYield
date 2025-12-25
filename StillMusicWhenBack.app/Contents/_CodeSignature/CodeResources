@@ -5,7 +5,17 @@
 	<key>files</key>
 	<dict/>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Entitlements.plist</key>
+		<dict>
+			<key>cdhash</key>
+			<data>
+			tsLDl2eCYjrUDFV6gOdZDpM40l4=
+			</data>
+			<key>requirement</key>
+			<string>cdhash H"4af3528768572f4c19b03be5f495e080bdd1b2cf" or cdhash H"b6c2c3976782623ad40c557a80e7590e9338d25e"</string>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>
