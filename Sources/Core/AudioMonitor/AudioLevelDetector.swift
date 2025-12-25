@@ -46,10 +46,17 @@ class AudioLevelDetector {
 
     /// 处理音频缓冲区
     func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData else { return }
+        print("[AudioDetector] 🔧 [DEBUG] 开始处理音频缓冲区...")
+
+        guard let channelData = buffer.floatChannelData else {
+            print("[AudioDetector] ❌ [DEBUG] channelData 为 nil!")
+            return
+        }
 
         let frameLength = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
+
+        print("[AudioDetector] 🔧 [DEBUG] 帧长度: \(frameLength), 声道数: \(channelCount)")
 
         // 计算 RMS（均方根）
         var rms: Float = 0.0
@@ -70,8 +77,11 @@ class AudioLevelDetector {
         // 转换为 dB
         let dB = amplitudeToDecibels(rms)
 
+        print("[AudioDetector] 🔧 [DEBUG] RMS: \(String(format: "%.6f", rms)), dB: \(String(format: "%.1f", dB))")
+
         // 如果正在学习基线
         if isLearningBaseline {
+            print("[AudioDetector] 🔧 [DEBUG] 正在学习基线，样本数: \(baselineSamples.count + 1)")
             baselineSamples.append(dB)
             return
         }
@@ -86,7 +96,10 @@ class AudioLevelDetector {
         let smoothedLevel = recentLevels.reduce(0, +) / Float(recentLevels.count)
 
         // 判断是否有显著声音
-        let hasSignificantSound = smoothedLevel > (baselineNoiseLevel + thresholdOffset)
+        let threshold = baselineNoiseLevel + thresholdOffset
+        let hasSignificantSound = smoothedLevel > threshold
+
+        print("[AudioDetector] 🔧 [DEBUG] 平滑音量: \(String(format: "%.1f", smoothedLevel)) dB, 阈值: \(String(format: "%.1f", threshold)) dB, 有声音: \(hasSignificantSound)")
 
         // 只在状态变化时触发回调
         if hasSignificantSound != lastSignificantSound {
@@ -98,6 +111,7 @@ class AudioLevelDetector {
                 print("[AudioDetector] 🔇 声音消失")
             }
 
+            print("[AudioDetector] 🔧 [DEBUG] 触发回调，hasSound: \(hasSignificantSound)")
             onSignificantSoundDetected?(hasSignificantSound)
         }
     }

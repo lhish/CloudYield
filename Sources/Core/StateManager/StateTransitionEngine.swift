@@ -76,6 +76,7 @@ class StateTransitionEngine {
 
     /// 音频级别变化回调
     func onAudioLevelChanged(hasSound: Bool) {
+        print("[StateEngine] 🔧 [DEBUG] 收到音频级别变化回调，hasSound: \(hasSound)")
         handleAudioLevelChange(hasSound: hasSound)
     }
 
