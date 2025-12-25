@@ -15,6 +15,19 @@ class MultiAppAudioMonitor {
 
     // 配置
     private let volumeThreshold: Float = -40.0  // dB，低于此值视为无声
+    private let startupTimeout: TimeInterval = 5.0  // 每个应用启动超时时间（秒）
+
+    // 黑名单：已知不支持音频捕获或会导致卡顿的应用
+    private let blacklistedBundleIDs: Set<String> = [
+        "com.microsoft.VSCode",
+        "com.todesktop.230313mzl4w4u92",  // Cursor
+        "com.github.atom",
+        "com.sublimetext.4",
+        "com.jetbrains.intellij",
+        "com.jetbrains.pycharm",
+        "com.jetbrains.webstorm",
+        "com.apple.dt.Xcode"
+    ]
 
     // 回调
     var onPlaybackStatusChanged: ((Bool) -> Void)?  // 是否有其他应用在播放
@@ -44,34 +57,32 @@ class MultiAppAudioMonitor {
 
         logDebug("找到 \(content.applications.count) 个运行中的应用", module: "MultiAppMonitor")
 
-        // 自动监控所有应用（排除自己和系统应用）
+        // 自动监控所有应用（排除自己、系统应用和黑名单）
         let appsToMonitor = content.applications.filter { app in
             !app.bundleIdentifier.isEmpty &&
             app.bundleIdentifier != Bundle.main.bundleIdentifier &&
             !app.bundleIdentifier.hasPrefix("com.apple.systemuiserver") &&
             !app.bundleIdentifier.hasPrefix("com.apple.controlcenter") &&
             !app.bundleIdentifier.hasPrefix("com.apple.finder") &&
-            !isNeteaseMusicApp(app.bundleIdentifier)  // 也排除网易云音乐
+            !isNeteaseMusicApp(app.bundleIdentifier) &&
+            !blacklistedBundleIDs.contains(app.bundleIdentifier)  // 排除黑名单
         }
 
         logInfo("🎯 将自动监控 \(appsToMonitor.count) 个应用", module: "MultiAppMonitor")
 
-        // 为每个应用创建音频流
-        for app in appsToMonitor {
-            let stream = AppAudioStream(application: app)
-
-            // 设置音量变化回调
-            stream.onVolumeChanged = { [weak self] volume in
-                self?.handleVolumeChanged(bundleID: app.bundleIdentifier, volume: volume)
+        // 并行启动所有应用的监控
+        await withTaskGroup(of: (String, AppAudioStream?).self) { group in
+            for app in appsToMonitor {
+                group.addTask {
+                    await self.startMonitoringApp(app)
+                }
             }
 
-            // 启动捕获
-            do {
-                try await stream.startCapture()
-                appStreams[app.bundleIdentifier] = stream
-                logSuccess("✅ 成功启动监控: \(app.applicationName) (\(app.bundleIdentifier))", module: "MultiAppMonitor")
-            } catch {
-                logError("❌ 启动失败: \(app.applicationName) - \(error)", module: "MultiAppMonitor")
+            // 收集结果
+            for await (bundleID, stream) in group {
+                if let stream = stream {
+                    appStreams[bundleID] = stream
+                }
             }
         }
 
@@ -143,6 +154,64 @@ class MultiAppAudioMonitor {
     }
 
     // MARK: - Private Methods
+
+    /// 启动单个应用的监控（带超时）
+    private func startMonitoringApp(_ app: SCRunningApplication) async -> (String, AppAudioStream?) {
+        let bundleID = app.bundleIdentifier
+        let appName = app.applicationName
+
+        logInfo("🎵 开始捕获应用音频: \(appName)", module: "AppAudioStream")
+
+        let stream = AppAudioStream(application: app)
+
+        // 设置音量变化回调
+        stream.onVolumeChanged = { [weak self] volume in
+            self?.handleVolumeChanged(bundleID: bundleID, volume: volume)
+        }
+
+        // 使用超时机制启动捕获
+        do {
+            try await withTimeout(seconds: startupTimeout) {
+                try await stream.startCapture()
+            }
+            logSuccess("✅ 成功启动监控: \(appName) (\(bundleID))", module: "MultiAppMonitor")
+            return (bundleID, stream)
+        } catch {
+            if error is TimeoutError {
+                logWarning("⏱️ 启动超时: \(appName) (\(bundleID))", module: "MultiAppMonitor")
+            } else {
+                logError("❌ 启动失败: \(appName) - \(error)", module: "MultiAppMonitor")
+            }
+            return (bundleID, nil)
+        }
+    }
+
+    /// 超时错误
+    private struct TimeoutError: Error {}
+
+    /// 带超时的异步操作
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            // 添加实际操作任务
+            group.addTask {
+                try await operation()
+            }
+
+            // 添加超时任务
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError()
+            }
+
+            // 等待第一个完成的任务
+            let result = try await group.next()!
+
+            // 取消其他任务
+            group.cancelAll()
+
+            return result
+        }
+    }
 
     private func handleVolumeChanged(bundleID: String, volume: Float) {
         updateQueue.async { [weak self] in
