@@ -168,59 +168,48 @@ class AppAudioStream: NSObject {
     }
 
     /// 从 CMSampleBuffer 提取音频采样数据
-    /// 参考 OBS 的 screen_stream_audio_update 实现
+    /// 使用 OBS 的方式：直接访问 CMBlockBuffer，避免 AudioBufferList
     private func extractAudioSamples(from sampleBuffer: CMSampleBuffer) -> [Float]? {
-        // 首先获取需要的 AudioBufferList 大小
-        var bufferListSizeNeeded: Int = 0
-        var status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer,
-            bufferListSizeNeededOut: &bufferListSizeNeeded,
-            bufferListOut: nil,
-            bufferListSize: 0,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: 0,
-            blockBufferOut: nil
+        // 获取格式描述
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) else {
+            return nil
+        }
+
+        // 获取音频流基本描述
+        guard let audioDesc = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
+            return nil
+        }
+
+        let channelCount = Int(audioDesc.pointee.mChannelsPerFrame)
+        guard channelCount > 0 else {
+            return nil
+        }
+
+        // 获取 CMBlockBuffer（OBS 方式）
+        guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return nil
+        }
+
+        // 直接获取数据指针
+        var lengthAtOffset: Int = 0
+        var totalLength: Int = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+
+        let status = CMBlockBufferGetDataPointer(
+            dataBuffer,
+            atOffset: 0,
+            lengthAtOffsetOut: &lengthAtOffset,
+            totalLengthOut: &totalLength,
+            dataPointerOut: &dataPointer
         )
 
-        guard status == noErr || status == kCMSampleBufferError_BufferHasNoSampleSizes else {
-            logError("获取 AudioBufferList 大小失败: OSStatus=\(status)", module: "AppAudioStream")
+        guard status == kCMBlockBufferNoErr, let bytes = dataPointer else {
             return nil
         }
 
-        // 分配足够的内存
-        let audioBufferListPointer = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
-        defer { audioBufferListPointer.deallocate() }
-
-        var blockBuffer: CMBlockBuffer?
-        status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: audioBufferListPointer,
-            bufferListSize: bufferListSizeNeeded,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer
-        )
-
-        defer { blockBuffer = nil }
-
-        guard status == noErr else {
-            logError("提取音频缓冲区失败: OSStatus=\(status)", module: "AppAudioStream")
-            return nil
-        }
-
-        // 从 AudioBufferList 中提取 Float 数据
-        let ablPointer = UnsafeMutableAudioBufferListPointer(audioBufferListPointer)
-
-        guard let buffer = ablPointer.first,
-              let data = buffer.mData else {
-            return nil
-        }
-
-        let floatPtr = data.assumingMemoryBound(to: Float.self)
-        let frameCount = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+        // 转换为 Float 指针
+        let floatPtr = UnsafeRawPointer(bytes).assumingMemoryBound(to: Float.self)
+        let frameCount = totalLength / MemoryLayout<Float>.size
 
         // 转换为 Swift 数组
         let samples = Array(UnsafeBufferPointer(start: floatPtr, count: frameCount))
@@ -228,7 +217,7 @@ class AppAudioStream: NSObject {
         // 输出前几个采样值用于调试（仅在首次捕获时）
         if firstCapture && !samples.isEmpty {
             let samplePreview = samples.prefix(5).map { String(format: "%.4f", $0) }.joined(separator: ", ")
-            logDebug("[\(application.applicationName)] 首次音频采样: [\(samplePreview)...] (共 \(frameCount) 帧)", module: "AppAudioStream")
+            logDebug("[\(application.applicationName)] 首次音频采样: [\(samplePreview)...] (共 \(frameCount) 帧, \(channelCount) 通道)", module: "AppAudioStream")
             firstCapture = false
         }
 
