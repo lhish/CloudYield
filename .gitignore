@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~.nib
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+
+# Build products
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+Package.resolved
+.build/
+
+# CocoaPods
+Pods/
+*.xcworkspace
+
+# Carthage
+Carthage/Build/
+
+# User-specific files
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+.idea/
+*.hmap
+
+# Other
+*.moved-aside
+*.orig
+
+# Firebase
+firebase-debug.log
+.firebase/
