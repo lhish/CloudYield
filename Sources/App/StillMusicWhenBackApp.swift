@@ -68,13 +68,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 检查屏幕录制权限（用于捕获系统音频）
         if !permissionManager.hasScreenRecordingPermission() {
-            print("[App] ⚠️  缺少屏幕录制权限")
-            await showPermissionAlert()
+            print("[App] ⚠️  缺少屏幕录制权限，正在请求...")
+
+            // 自动请求权限
+            permissionManager.requestScreenRecordingPermission()
+
+            // 等待一小段时间让系统显示权限对话框
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+
+            // 再次检查权限
+            if !permissionManager.hasScreenRecordingPermission() {
+                print("[App] ⚠️  仍缺少屏幕录制权限，显示设置指引")
+                await showPermissionAlert()
+            } else {
+                print("[App] ✅ 屏幕录制权限已授予")
+            }
+        } else {
+            print("[App] ✅ 已有屏幕录制权限")
         }
 
         // 检查辅助功能权限（用于控制网易云音乐）
         if !permissionManager.hasAccessibilityPermission() {
-            print("[App] ⚠️  缺少辅助功能权限")
+            print("[App] ⚠️  缺少辅助功能权限，正在请求...")
+
+            // 自动请求权限（会弹出系统对话框）
+            permissionManager.requestAccessibilityPermission()
+
+            // 等待一小段时间
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+
+            if permissionManager.hasAccessibilityPermission() {
+                print("[App] ✅ 辅助功能权限已授予")
+            } else {
+                print("[App] 💡 请在系统设置中授予辅助功能权限")
+                print("[App] 💡 路径: 系统设置 → 隐私与安全性 → 辅助功能")
+            }
+        } else {
+            print("[App] ✅ 已有辅助功能权限")
         }
     }
 
