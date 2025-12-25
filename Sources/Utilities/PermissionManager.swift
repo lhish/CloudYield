@@ -13,26 +13,18 @@ import ScreenCaptureKit
 class PermissionManager {
     // MARK: - Screen Recording Permission
 
-    /// 检查是否有屏幕录制权限
+    /// 检查是否有屏幕录制权限（仅检查，不会触发请求）
     func hasScreenRecordingPermission() -> Bool {
-        // 直接使用 CGPreflightScreenCaptureAccess
-        // 这个 API 会返回实时的权限状态，不会有缓存问题
-        let hasPermission = CGPreflightScreenCaptureAccess()
-
-        // 调试日志
-        if hasPermission {
-            print("[PermissionManager] 🔧 DEBUG CGPreflightScreenCaptureAccess 返回: true（有权限）")
-        } else {
-            print("[PermissionManager] 🔧 DEBUG CGPreflightScreenCaptureAccess 返回: false（无权限）")
-        }
-
-        return hasPermission
+        // 使用 CGPreflightScreenCaptureAccess 只检查权限，不请求
+        // 这个函数是非侵入式的，只读取当前权限状态
+        return CGPreflightScreenCaptureAccess()
     }
 
-    /// 请求屏幕录制权限
+    /// 请求屏幕录制权限（会弹出系统权限对话框）
     func requestScreenRecordingPermission() {
-        // 尝试访问屏幕捕获，这会触发系统权限请求
-        let _ = CGRequestScreenCaptureAccess()
+        // CGRequestScreenCaptureAccess 会触发系统权限请求对话框
+        // 这个函数只调用一次！
+        CGRequestScreenCaptureAccess()
     }
 
     /// 打开屏幕录制权限设置
