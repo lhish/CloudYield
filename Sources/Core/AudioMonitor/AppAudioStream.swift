@@ -38,35 +38,34 @@ class AppAudioStream: NSObject {
 
         logInfo("🎵 开始捕获应用音频: \(application.applicationName)", module: "AppAudioStream")
 
-        // 创建配置
+        // 创建配置 - 只捕获音频
         let config = SCStreamConfiguration()
+
+        // 音频配置
         config.capturesAudio = true
         config.sampleRate = 48000
         config.channelCount = 2
         config.excludesCurrentProcessAudio = true
 
-        // 最小视频配置（ScreenCaptureKit 要求必须配置视频）
-        config.width = 2
-        config.height = 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+        // 禁用视频捕获（避免触发视频相关的系统 bug）
+        config.width = 1
+        config.height = 1
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
+        config.queueDepth = 3
 
-        // 创建应用特定的过滤器
-        // 根据 ScreenCaptureKit 文档，音频过滤只能在应用级别工作
-        // 我们需要使用 display + excluding 来实现应用级音频捕获
-        guard let display = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false).displays.first else {
-            throw NSError(domain: "AppAudioStream", code: -1, userInfo: [NSLocalizedDescriptionKey: "找不到显示器"])
+        // 获取应用的窗口，使用 desktopIndependentWindow 过滤器
+        // 这是 OBS 推荐的方式，只捕获应用音频，不涉及显示器
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        let appWindows = content.windows.filter { $0.owningApplication?.bundleIdentifier == application.bundleIdentifier }
+
+        guard let window = appWindows.first else {
+            throw NSError(domain: "AppAudioStream", code: -1, userInfo: [NSLocalizedDescriptionKey: "找不到应用窗口: \(application.applicationName)"])
         }
 
-        // 排除所有应用，只保留我们要监控的这一个应用
-        let allApps = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false).applications
-        let appsToExclude = allApps.filter { $0.bundleIdentifier != application.bundleIdentifier }
-
         let filter = SCContentFilter(
-            display: display,
-            excludingApplications: appsToExclude,
-            exceptingWindows: []
+            desktopIndependentWindow: window
         )
 
         logDebug("创建过滤器: desktopIndependentWindow(\(application.applicationName))", module: "AppAudioStream")
@@ -85,8 +84,15 @@ class AppAudioStream: NSObject {
             sampleHandlerQueue: audioQueue
         )
 
-        // 启动捕获
-        try await stream?.startCapture()
+        // 启动捕获（支持取消）
+        try await withTaskCancellationHandler {
+            try await stream?.startCapture()
+        } onCancel: {
+            // 如果任务被取消，停止流
+            Task {
+                try? await self.stream?.stopCapture()
+            }
+        }
 
         isCapturing = true
         logSuccess("✅ 应用音频捕获已启动: \(application.applicationName)", module: "AppAudioStream")

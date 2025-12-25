@@ -26,7 +26,12 @@ class MultiAppAudioMonitor {
         "com.jetbrains.intellij",
         "com.jetbrains.pycharm",
         "com.jetbrains.webstorm",
-        "com.apple.dt.Xcode"
+        "com.apple.dt.Xcode",
+        // 系统辅助进程（会导致崩溃）
+        "com.apple.nsattributedstringagent",
+        "com.apple.CursorUIViewService",
+        "com.apple.TextInputSwitcher",
+        "com.apple.dock"  // 程序坞
     ]
 
     // 回调
@@ -57,7 +62,11 @@ class MultiAppAudioMonitor {
 
         logDebug("找到 \(content.applications.count) 个运行中的应用", module: "MultiAppMonitor")
 
-        // 自动监控所有应用（排除自己、系统应用和黑名单）
+        // 获取所有窗口，用于过滤有窗口的应用
+        let allWindows = content.windows
+        let appsWithWindows = Set(allWindows.compactMap { $0.owningApplication?.bundleIdentifier })
+
+        // 自动监控所有应用（排除自己、系统应用、黑名单、无窗口应用）
         let appsToMonitor = content.applications.filter { app in
             !app.bundleIdentifier.isEmpty &&
             app.bundleIdentifier != Bundle.main.bundleIdentifier &&
@@ -65,29 +74,67 @@ class MultiAppAudioMonitor {
             !app.bundleIdentifier.hasPrefix("com.apple.controlcenter") &&
             !app.bundleIdentifier.hasPrefix("com.apple.finder") &&
             !isNeteaseMusicApp(app.bundleIdentifier) &&
-            !blacklistedBundleIDs.contains(app.bundleIdentifier)  // 排除黑名单
+            !blacklistedBundleIDs.contains(app.bundleIdentifier) &&
+            appsWithWindows.contains(app.bundleIdentifier)  // 只监控有窗口的应用
         }
 
         logInfo("🎯 将自动监控 \(appsToMonitor.count) 个应用", module: "MultiAppMonitor")
 
-        // 并行启动所有应用的监控
+        // 先启动第一个应用的监控（预热，触发权限验证）
+        if let firstApp = appsToMonitor.first {
+            logInfo("🔥 预热：先启动第一个应用的监控", module: "MultiAppMonitor")
+            let (bundleID, stream) = await startMonitoringApp(firstApp)
+            if let stream = stream {
+                appStreams[bundleID] = stream
+            }
+
+            // 等待一下，确保权限完全生效
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+        }
+
+        // 并行启动剩余应用的监控（限制并发数）
+        let remainingApps = Array(appsToMonitor.dropFirst())
+        let maxConcurrent = 10  // 最多同时启动10个
+        var successCount = appStreams.count  // 包含预热的第一个
+        var timeoutCount = 0
+
         await withTaskGroup(of: (String, AppAudioStream?).self) { group in
-            for app in appsToMonitor {
+            var index = 0
+
+            // 分批启动
+            for app in remainingApps {
+                // 限制并发数
+                if index >= maxConcurrent {
+                    // 等待一个任务完成
+                    if let (bundleID, stream) = await group.next() {
+                        if let stream = stream {
+                            appStreams[bundleID] = stream
+                            successCount += 1
+                        } else {
+                            timeoutCount += 1
+                        }
+                    }
+                }
+
                 group.addTask {
                     await self.startMonitoringApp(app)
                 }
+                index += 1
             }
 
-            // 收集结果
+            // 收集剩余结果
             for await (bundleID, stream) in group {
                 if let stream = stream {
                     appStreams[bundleID] = stream
+                    successCount += 1
+                } else {
+                    timeoutCount += 1
                 }
             }
         }
 
         isMonitoring = true
-        logSuccess("🎉 多应用音频监控已启动，正在监控 \(appStreams.count) 个应用", module: "MultiAppMonitor")
+        logSuccess("🎉 多应用音频监控已启动，成功: \(successCount), 超时/失败: \(timeoutCount)", module: "MultiAppMonitor")
     }
 
     /// 停止监控
@@ -191,7 +238,7 @@ class MultiAppAudioMonitor {
 
     /// 带超时的异步操作
     private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
+        return try await withThrowingTaskGroup(of: T.self) { group in
             // 添加实际操作任务
             group.addTask {
                 try await operation()
@@ -204,7 +251,9 @@ class MultiAppAudioMonitor {
             }
 
             // 等待第一个完成的任务
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw TimeoutError()
+            }
 
             // 取消其他任务
             group.cancelAll()

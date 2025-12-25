@@ -36,18 +36,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 初始化权限管理器
         permissionManager = PermissionManager()
 
-        // 检查并请求屏幕录制权限（用于音频监控）
+        // 异步等待权限并初始化服务
         Task {
+            // 1. 先等待屏幕录制权限
             await checkScreenRecordingPermission()
-        }
 
-        // 检查并请求辅助功能权限（用于控制网易云音乐）
-        Task {
+            // 2. 再等待辅助功能权限
             await checkAccessibilityPermission()
-        }
 
-        // 初始化核心服务
-        initializeServices()
+            // 3. 权限都授予后，再初始化核心服务
+            await MainActor.run {
+                initializeServices()
+            }
+        }
 
         // 配置开机自启动（首次启动时提示用户）
         configureLaunchAtLogin()
@@ -104,6 +105,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
+
+        // 等待权限完全生效（避免后续操作触发权限对话框）
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
+        logDebug("权限生效等待完成", module: "App")
     }
 
     private func checkAccessibilityPermission() async {
