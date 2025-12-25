@@ -61,6 +61,12 @@ class AudioLevelDetector {
         // 计算 RMS（均方根）
         var rms: Float = 0.0
 
+        // 调试：检查前几个采样值
+        if frameLength > 0 {
+            let sampleValues = (0..<min(5, Int(frameLength))).map { channelData[0][$0] }
+            logDebug("前5个采样值: \(sampleValues.map { String(format: "%.6f", $0) }.joined(separator: ", "))", module: "AudioDetector")
+        }
+
         for channel in 0..<channelCount {
             let samples = channelData[channel]
             var channelRMS: Float = 0.0

@@ -81,16 +81,34 @@ class AudioMonitorService: NSObject {
             logDebug("音频配置: 采样率=\(config.sampleRate), 声道=\(config.channelCount)", module: "AudioMonitor")
             logDebug("视频配置(仅用于启用Stream): \(config.width)x\(config.height) @ 1fps", module: "AudioMonitor")
 
-            // 3. 创建内容过滤器（捕获所有音频）
+            // 3. 创建内容过滤器 - 捕获所有应用的音频
             logDebug("步骤3: 创建内容过滤器...", module: "AudioMonitor")
             guard let display = content.displays.first else {
                 logError("没有找到可用的显示器！", module: "AudioMonitor")
                 throw NSError(domain: "AudioMonitor", code: -1, userInfo: [NSLocalizedDescriptionKey: "没有找到可用的显示器"])
             }
-            logDebug("使用显示器: \(display)", module: "AudioMonitor")
 
-            let filter = SCContentFilter(display: display, excludingWindows: [])
-            logDebug("过滤器创建成功", module: "AudioMonitor")
+            // 获取所有运行中的应用
+            let runningApps = content.applications.filter { app in
+                app.applicationName != "StillMusicWhenBack" // 排除自己
+            }
+            logDebug("找到 \(runningApps.count) 个运行中的应用", module: "AudioMonitor")
+
+            // 列出所有应用用于调试
+            for (index, app) in runningApps.enumerated() {
+                let appInfo = "\(index+1): \(app.applicationName) (Bundle: \(app.bundleIdentifier))"
+                logDebug("应用 \(appInfo)", module: "AudioMonitor")
+
+                // 特别标记网易云音乐
+                if app.applicationName.contains("网易") || app.applicationName.contains("Netease") ||
+                   app.bundleIdentifier.contains("163music") || app.bundleIdentifier.contains("netease") {
+                    logInfo("⭐️ 找到网易云音乐: \(appInfo)", module: "AudioMonitor")
+                }
+            }
+
+            // 创建过滤器 - 明确包含所有应用以捕获其音频
+            let filter = SCContentFilter(display: display, including: runningApps, exceptingWindows: [])
+            logDebug("过滤器创建成功 - 将捕获 \(runningApps.count) 个应用的音频", module: "AudioMonitor")
 
             // 4. 创建流
             logDebug("步骤4: 创建 SCStream...", module: "AudioMonitor")

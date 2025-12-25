@@ -23,7 +23,7 @@ struct StillMusicWhenBackApp: App {
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     // 核心服务
-    private var audioMonitor: AudioMonitorService?
+    private var mediaMonitor: ScreenCaptureAudioMonitor?
     private var musicController: NeteaseMusicController?
     private var stateEngine: StateTransitionEngine?
     private var menuBarController: MenuBarController?
@@ -36,9 +36,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 初始化权限管理器
         permissionManager = PermissionManager()
 
-        // 检查并请求必要权限
+        // 检查并请求辅助功能权限（用于控制网易云音乐）
         Task {
-            await checkPermissions()
+            await checkAccessibilityPermission()
         }
 
         // 初始化核心服务
@@ -53,8 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         logInfo("应用即将退出...", module: "App")
 
-        // 停止音频监控
-        audioMonitor?.stopMonitoring()
+        // 停止媒体监控
+        mediaMonitor?.stopMonitoring()
 
         // 清理资源
         cleanup()
@@ -64,73 +64,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Private Methods
 
-    private func checkPermissions() async {
+    private func checkAccessibilityPermission() async {
         guard let permissionManager = permissionManager else { return }
 
-        // 检查屏幕录制权限（用于捕获系统音频）
-        await checkScreenRecordingPermission(permissionManager: permissionManager)
-
-        // 检查辅助功能权限（用于控制网易云音乐）
-        await checkAccessibilityPermission(permissionManager: permissionManager)
-    }
-
-    private func checkScreenRecordingPermission(permissionManager: PermissionManager) async {
-        // 先检查一次，如果已有权限就不请求
-        if permissionManager.hasScreenRecordingPermission() {
-            logSuccess("已有屏幕录制权限", module: "App")
-            return
-        }
-
-        // 更新托盘图标显示等待权限状态
-        menuBarController?.updateIcon("⚠️")
-        menuBarController?.updateStatusText("⚠️ 等待屏幕录制权限...")
-
-        // 没有权限，只请求一次
-        logWarning("缺少屏幕录制权限，正在请求...", module: "App")
-        permissionManager.requestScreenRecordingPermission()
-
-        // 持续检测直到有权限（不再重复请求）
-        logInfo("等待用户授予屏幕录制权限...", module: "App")
-        logInfo("请在系统设置中勾选 StillMusicWhenBack 或 Terminal", module: "App")
-
-        var attempts = 0
-        while !permissionManager.hasScreenRecordingPermission() {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
-            attempts += 1
-
-            // 每5次检查输出一次日志
-            if attempts % 5 == 0 {
-                logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
-                // 更新托盘状态显示等待时间
-                menuBarController?.updateStatusText("⚠️ 等待屏幕录制权限... (\(attempts)秒)")
-            }
-
-            // 每30秒提醒一次
-            if attempts % 30 == 0 {
-                logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
-                logInfo("请确认已在系统设置中勾选权限", module: "App")
-            }
-        }
-
-        logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
-
-        // 恢复正常图标
-        menuBarController?.updateIcon("✅")
-        menuBarController?.updateStatusText("✅ 屏幕录制权限已授予")
-
-        // 权限授予后，重新启动音频监控
-        logInfo("检测到权限授予，正在重新启动音频监控...", module: "App")
-        Task {
-            do {
-                try await audioMonitor?.startMonitoring()
-                logSuccess("音频监控已成功启动", module: "App")
-            } catch {
-                logError("音频监控重启失败: \(error)", module: "App")
-            }
-        }
-    }
-
-    private func checkAccessibilityPermission(permissionManager: PermissionManager) async {
         // 先检查一次，如果已有权限就不请求
         if permissionManager.hasAccessibilityPermission() {
             logSuccess("已有辅助功能权限", module: "App")
@@ -198,19 +134,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
-        // 2. 初始化音频监控服务
-        audioMonitor = AudioMonitorService()
+        // 2. 初始化 ScreenCapture 音频监控服务
+        mediaMonitor = ScreenCaptureAudioMonitor()
 
         // 3. 初始化状态引擎
-        if let musicController = musicController, let audioMonitor = audioMonitor {
+        if let musicController = musicController, let mediaMonitor = mediaMonitor {
             stateEngine = StateTransitionEngine(
                 musicController: musicController,
-                audioMonitor: audioMonitor
+                mediaMonitor: mediaMonitor
             )
 
             // 设置回调
-            audioMonitor.onAudioLevelChanged = { [weak self] hasSignificantSound in
-                self?.stateEngine?.onAudioLevelChanged(hasSound: hasSignificantSound)
+            mediaMonitor.onOtherAppPlayingChanged = { [weak self] isPlaying in
+                self?.stateEngine?.onOtherAppPlayingChanged(isPlaying: isPlaying)
             }
         }
 
@@ -219,15 +155,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menuBarController = MenuBarController(stateEngine: stateEngine)
         }
 
-        // 5. 启动音频监控
-        Task {
-            do {
-                try await audioMonitor?.startMonitoring()
-                logSuccess("音频监控已启动", module: "App")
-            } catch {
-                logError("音频监控启动失败: \(error)", module: "App")
-            }
-        }
+        // 5. 启动 Core Audio 进程监控
+        mediaMonitor?.startMonitoring()
+        logSuccess("Core Audio 进程监控已启动", module: "App")
 
         // 6. 启动状态引擎
         stateEngine?.start()
@@ -266,7 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func cleanup() {
         // 清理资源
-        audioMonitor = nil
+        mediaMonitor = nil
         musicController = nil
         stateEngine = nil
         menuBarController = nil

@@ -12,7 +12,7 @@ class StateTransitionEngine {
 
     private var currentState: MonitorState = .idle
     private let musicController: NeteaseMusicController
-    private let audioMonitor: AudioMonitorService
+    private let mediaMonitor: MediaMonitorProtocol
 
     // 计时器
     private var detectTimer: DelayTimer?      // 检测其他声音的计时器
@@ -26,9 +26,9 @@ class StateTransitionEngine {
 
     // MARK: - Initialization
 
-    init(musicController: NeteaseMusicController, audioMonitor: AudioMonitorService) {
+    init(musicController: NeteaseMusicController, mediaMonitor: MediaMonitorProtocol) {
         self.musicController = musicController
-        self.audioMonitor = audioMonitor
+        self.mediaMonitor = mediaMonitor
 
         // 初始化计时器
         detectTimer = DelayTimer(delay: 3.0)
@@ -74,10 +74,10 @@ class StateTransitionEngine {
         transitionTo(.monitoring)
     }
 
-    /// 音频级别变化回调
-    func onAudioLevelChanged(hasSound: Bool) {
-        logDebug("收到音频级别变化回调，hasSound: \(hasSound)", module: "StateEngine")
-        handleAudioLevelChange(hasSound: hasSound)
+    /// 其他应用播放状态变化回调
+    func onOtherAppPlayingChanged(isPlaying: Bool) {
+        logDebug("收到其他应用播放状态变化回调，isPlaying: \(isPlaying)", module: "StateEngine")
+        handleOtherAppPlayingChange(isPlaying: isPlaying)
     }
 
     /// 获取当前状态
@@ -87,44 +87,44 @@ class StateTransitionEngine {
 
     // MARK: - Private Methods - State Machine
 
-    private func handleAudioLevelChange(hasSound: Bool) {
+    private func handleOtherAppPlayingChange(isPlaying: Bool) {
         switch currentState {
         case .monitoring:
-            if hasSound {
-                // 检测到声音，开始计时
-                logInfo("检测到声音，开始计时...", module: "StateEngine")
+            if isPlaying {
+                // 检测到其他应用播放，开始计时
+                logInfo("检测到其他应用播放，开始计时...", module: "StateEngine")
                 detectTimer?.start()
                 transitionTo(.detectingOtherSound)
             }
 
         case .detectingOtherSound:
-            if !hasSound {
-                // 声音消失，取消计时
-                logInfo("声音消失，取消计时", module: "StateEngine")
+            if !isPlaying {
+                // 其他应用停止播放，取消计时
+                logInfo("其他应用停止播放，取消计时", module: "StateEngine")
                 detectTimer?.stop()
                 transitionTo(.monitoring)
             }
-            // 如果声音持续，等待计时器到期
+            // 如果其他应用继续播放，等待计时器到期
 
         case .musicPaused:
-            if !hasSound {
-                // 其他声音停止，开始恢复计时
-                logInfo("其他声音停止，开始恢复计时...", module: "StateEngine")
+            if !isPlaying {
+                // 其他应用停止播放，开始恢复计时
+                logInfo("其他应用停止播放，开始恢复计时...", module: "StateEngine")
                 resumeTimer?.start()
                 transitionTo(.waitingResume)
             }
 
         case .waitingResume:
-            if hasSound {
-                // 再次检测到声音，取消恢复
-                logInfo("再次检测到声音，取消恢复", module: "StateEngine")
+            if isPlaying {
+                // 再次检测到其他应用播放，取消恢复
+                logInfo("再次检测到其他应用播放，取消恢复", module: "StateEngine")
                 resumeTimer?.stop()
                 transitionTo(.musicPaused)
             }
-            // 如果声音持续安静，等待计时器到期
+            // 如果其他应用持续安静，等待计时器到期
 
         case .idle, .paused:
-            // 这些状态不处理音频变化
+            // 这些状态不处理播放状态变化
             break
         }
     }
