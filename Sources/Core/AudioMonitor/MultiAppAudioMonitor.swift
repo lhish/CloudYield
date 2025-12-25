@@ -80,8 +80,16 @@ class MultiAppAudioMonitor {
 
         logInfo("🎯 将自动监控 \(appsToMonitor.count) 个应用", module: "MultiAppMonitor")
 
+        // 🧪 测试模式：只监控第一个应用
+        let testMode = true
+        let finalAppsToMonitor = testMode ? Array(appsToMonitor.prefix(1)) : appsToMonitor
+
+        if testMode {
+            logInfo("⚠️ 测试模式：只监控 1 个应用", module: "MultiAppMonitor")
+        }
+
         // 先启动第一个应用的监控（预热，触发权限验证）
-        if let firstApp = appsToMonitor.first {
+        if let firstApp = finalAppsToMonitor.first {
             logInfo("🔥 预热：先启动第一个应用的监控", module: "MultiAppMonitor")
             let (bundleID, stream) = await startMonitoringApp(firstApp)
             if let stream = stream {
@@ -93,7 +101,7 @@ class MultiAppAudioMonitor {
         }
 
         // 并行启动剩余应用的监控（限制并发数）
-        let remainingApps = Array(appsToMonitor.dropFirst())
+        let remainingApps = Array(finalAppsToMonitor.dropFirst())
         let maxConcurrent = 10  // 最多同时启动10个
         var successCount = appStreams.count  // 包含预热的第一个
         var timeoutCount = 0

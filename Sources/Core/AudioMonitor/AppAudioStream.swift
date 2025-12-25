@@ -20,6 +20,10 @@ class AppAudioStream: NSObject {
         qos: .userInteractive
     )
 
+    // 节流：限制回调频率
+    private var lastCallbackTime: Date = .distantPast
+    private let callbackInterval: TimeInterval = 1.0  // 每秒最多1次回调
+
     // 回调
     var onVolumeChanged: ((Float) -> Void)?
 
@@ -47,13 +51,14 @@ class AppAudioStream: NSObject {
         config.channelCount = 2
         config.excludesCurrentProcessAudio = true
 
-        // 禁用视频捕获（避免触发视频相关的系统 bug）
-        config.width = 1
-        config.height = 1
+        // 视频配置：使用合理的尺寸，避免触发边界条件 bug
+        // 参考 OBS 的配置：最小 16x16
+        config.width = 16
+        config.height = 16
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
-        config.queueDepth = 3
+        config.queueDepth = 5  // 增加队列深度，避免 buffer 管理问题
 
         // 获取应用的窗口，使用 desktopIndependentWindow 过滤器
         // 这是 OBS 推荐的方式，只捕获应用音频，不涉及显示器
@@ -139,12 +144,18 @@ class AppAudioStream: NSObject {
         // 更新音量
         currentVolume = dB
 
-        // 触发回调
-        onVolumeChanged?(dB)
+        // 节流：限制回调频率到每秒1次
+        let now = Date()
+        if now.timeIntervalSince(lastCallbackTime) >= callbackInterval {
+            lastCallbackTime = now
 
-        // 只记录有意义的音量（避免日志过多）
-        if dB > -40 {
-            logDebug("[\(application.applicationName)] 音量: \(String(format: "%.1f", dB)) dB", module: "AppAudioStream")
+            // 触发回调
+            onVolumeChanged?(dB)
+
+            // 只记录有意义的音量（避免日志过多）
+            if dB > -40 {
+                logDebug("[\(application.applicationName)] 音量: \(String(format: "%.1f", dB)) dB", module: "AppAudioStream")
+            }
         }
     }
 
