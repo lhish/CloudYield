@@ -23,7 +23,7 @@ struct StillMusicWhenBackApp: App {
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     // 核心服务
-    private var mediaMonitor: ScreenCaptureAudioMonitor?
+    private var mediaMonitor: MultiAppAudioMonitorAdapter?
     private var musicController: NeteaseMusicController?
     private var stateEngine: StateTransitionEngine?
     private var menuBarController: MenuBarController?
@@ -35,6 +35,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 初始化权限管理器
         permissionManager = PermissionManager()
+
+        // 检查并请求屏幕录制权限（用于音频监控）
+        Task {
+            await checkScreenRecordingPermission()
+        }
 
         // 检查并请求辅助功能权限（用于控制网易云音乐）
         Task {
@@ -63,6 +68,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Private Methods
+
+    private func checkScreenRecordingPermission() async {
+        guard let permissionManager = permissionManager else { return }
+
+        // 先检查一次，如果已有权限就不请求
+        if permissionManager.hasScreenRecordingPermission() {
+            logSuccess("已有屏幕录制权限", module: "App")
+            return
+        }
+
+        // 没有权限，主动请求
+        logWarning("缺少屏幕录制权限，正在请求...", module: "App")
+        permissionManager.requestScreenRecordingPermission()
+
+        // 等待用户授权
+        logInfo("等待用户授予屏幕录制权限...", module: "App")
+        logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
+
+        var attempts = 0
+        while !permissionManager.hasScreenRecordingPermission() {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
+            attempts += 1
+
+            // 每5次检查输出一次日志
+            if attempts % 5 == 0 {
+                logDebug("屏幕录制权限检查第 \(attempts) 次：仍未授予", module: "App")
+            }
+
+            // 每30秒提醒一次
+            if attempts % 30 == 0 {
+                logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
+                logInfo("路径: 系统设置 → 隐私与安全性 → 屏幕录制", module: "App")
+            }
+        }
+
+        logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
+    }
 
     private func checkAccessibilityPermission() async {
         guard let permissionManager = permissionManager else { return }
@@ -134,8 +176,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
-        // 2. 初始化 ScreenCapture 音频监控服务
-        mediaMonitor = ScreenCaptureAudioMonitor()
+        // 2. 初始化多应用音频监控服务（基于 OBS 方案）
+        mediaMonitor = MultiAppAudioMonitorAdapter()
 
         // 3. 初始化状态引擎
         if let musicController = musicController, let mediaMonitor = mediaMonitor {
@@ -155,9 +197,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menuBarController = MenuBarController(stateEngine: stateEngine)
         }
 
-        // 5. 启动 Core Audio 进程监控
+        // 5. 启动多应用音频监控（自动监控所有应用）
         mediaMonitor?.startMonitoring()
-        logSuccess("Core Audio 进程监控已启动", module: "App")
+        logSuccess("多应用音频监控已启动（基于 OBS 方案）", module: "App")
 
         // 6. 启动状态引擎
         stateEngine?.start()

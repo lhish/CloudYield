@@ -67,7 +67,7 @@ class AudioMonitorService: NSObject {
             config.capturesAudio = true
             config.sampleRate = 48000 // 48kHz 采样率
             config.channelCount = 2   // 立体声
-            config.excludesCurrentProcessAudio = false // 不排除本应用的音频,捕获所有系统音频
+            config.excludesCurrentProcessAudio = true // 排除本应用的音频,只捕获其他应用音频
 
             // ScreenCaptureKit要求：即使只捕获音频，也必须设置视频参数并启用视频捕获
             // 我们设置最小的视频配置以减少性能开销
@@ -88,27 +88,25 @@ class AudioMonitorService: NSObject {
                 throw NSError(domain: "AudioMonitor", code: -1, userInfo: [NSLocalizedDescriptionKey: "没有找到可用的显示器"])
             }
 
-            // 获取所有运行中的应用
-            let runningApps = content.applications.filter { app in
-                app.applicationName != "StillMusicWhenBack" // 排除自己
+            // 获取要排除的应用(只排除自己)
+            let appsToExclude = content.applications.filter { app in
+                app.applicationName == "StillMusicWhenBack"
             }
-            logDebug("找到 \(runningApps.count) 个运行中的应用", module: "AudioMonitor")
+            logDebug("找到 \(content.applications.count) 个运行中的应用", module: "AudioMonitor")
+            logDebug("将排除 \(appsToExclude.count) 个应用(自己)", module: "AudioMonitor")
 
-            // 列出所有应用用于调试
-            for (index, app) in runningApps.enumerated() {
-                let appInfo = "\(index+1): \(app.applicationName) (Bundle: \(app.bundleIdentifier))"
-                logDebug("应用 \(appInfo)", module: "AudioMonitor")
-
-                // 特别标记网易云音乐
+            // 检查网易云音乐是否在运行
+            for app in content.applications {
                 if app.applicationName.contains("网易") || app.applicationName.contains("Netease") ||
                    app.bundleIdentifier.contains("163music") || app.bundleIdentifier.contains("netease") {
-                    logInfo("⭐️ 找到网易云音乐: \(appInfo)", module: "AudioMonitor")
+                    logInfo("⭐️ 找到网易云音乐: \(app.applicationName) (Bundle: \(app.bundleIdentifier))", module: "AudioMonitor")
                 }
             }
 
-            // 创建过滤器 - 明确包含所有应用以捕获其音频
-            let filter = SCContentFilter(display: display, including: runningApps, exceptingWindows: [])
-            logDebug("过滤器创建成功 - 将捕获 \(runningApps.count) 个应用的音频", module: "AudioMonitor")
+            // 创建过滤器 - 捕获显示器上除了自己以外的所有应用音频
+            // 使用 excludingApplications 而不是 including,这是 Apple 推荐的捕获所有应用音频的方式
+            let filter = SCContentFilter(display: display, excludingApplications: appsToExclude, exceptingWindows: [])
+            logDebug("过滤器创建成功 - 将捕获除自己外的所有应用音频", module: "AudioMonitor")
 
             // 4. 创建流
             logDebug("步骤4: 创建 SCStream...", module: "AudioMonitor")
