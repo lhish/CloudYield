@@ -47,14 +47,14 @@ class AppAudioStream: NSObject {
 
         // 音频配置
         config.capturesAudio = true
-        config.sampleRate = 8000   // 8kHz
+        config.sampleRate = 1   // 8kHz
         config.channelCount = 1    // 单声道
         config.excludesCurrentProcessAudio = true
 
         // 最小化视频配置（SCStream 要求必须有视频参数）
         config.width = 2  // 最小有效值
         config.height = 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
+        config.minimumFrameInterval = CMTime(value: 100, timescale: 1)  // 1 FPS
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
         config.scalesToFit = false
