@@ -1,5 +1,6 @@
 import Foundation
 import ScreenCaptureKit
+import AppKit
 
 /// 多应用音频监控管理器
 /// 管理多个 AppAudioStream 实例，聚合音量数据
@@ -13,9 +14,53 @@ class MultiAppAudioMonitor {
     private var isMonitoring = false
     private let updateQueue = DispatchQueue(label: "com.stillmusic.multiapp.update")
 
+    // 动态监控：只监控前台应用 + 最近使用的应用
+    private var recentApps: [String: Date] = [:]  // bundleID -> 最后活跃时间
+    private let recentAppTimeout: TimeInterval = 30.0  // 30秒内使用过的应用
+    private var currentFrontmostApp: String?
+    private var workspaceObserver: NSObjectProtocol?
+
     // 配置
     private let volumeThreshold: Float = -40.0  // dB，低于此值视为无声
     private let startupTimeout: TimeInterval = 5.0  // 每个应用启动超时时间（秒）
+
+    // 白名单：常见的音频/视频应用（只监控这些应用以降低资源占用）
+    private let audioAppWhitelist: Set<String> = [
+        // 音乐播放器
+        "com.netease.163music",
+        "com.netease.Music",
+        "com.netease.CloudMusic",
+        "com.apple.Music",
+        "com.spotify.client",
+        "com.qq.QQMusic",
+
+        // 视频播放器
+        "com.colliderli.iina",
+        "org.videolan.vlc",
+        "com.apple.TV",
+        "com.tencent.tenvideo",
+        "com.iqiyi.player",
+
+        // 浏览器（可能播放视频/音乐）
+        "com.google.Chrome",
+        "com.apple.Safari",
+        "org.mozilla.firefox",
+        "com.microsoft.edgemac",
+        "com.brave.Browser",
+
+        // 通讯软件
+        "com.tencent.xinWeChat",
+        "com.tencent.qq",
+        "com.skype.skype",
+        "us.zoom.xos",
+        "com.microsoft.teams",
+        "com.tencent.meeting",
+
+        // 其他常见音频应用
+        "com.bilibili.mac",
+        "tv.douyu.DouyuLive",
+        "com.electron.neteasemusic"
+    ]
 
     // 黑名单：已知不支持音频捕获或会导致卡顿的应用
     private let blacklistedBundleIDs: Set<String> = [
@@ -45,110 +90,40 @@ class MultiAppAudioMonitor {
         logInfo("📋 设置监控应用列表: \(bundleIDs.joined(separator: ", "))", module: "MultiAppMonitor")
     }
 
-    /// 开始监控
+    /// 开始监控（动态模式：只监控前台应用 + 最近使用的应用）
     func startMonitoring() async throws {
         guard !isMonitoring else {
             logInfo("ℹ️ 已经在监控中", module: "MultiAppMonitor")
             return
         }
 
-        logInfo("🚀 开始多应用音频监控...", module: "MultiAppMonitor")
+        logInfo("🚀 开始动态音频监控（只监控前台应用）...", module: "MultiAppMonitor")
 
-        // 获取所有可用应用
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: false
-        )
+        // 设置应用切换监听
+        setupAppSwitchObserver()
 
-        logDebug("找到 \(content.applications.count) 个运行中的应用", module: "MultiAppMonitor")
-
-        // 获取所有窗口，用于过滤有窗口的应用
-        let allWindows = content.windows
-        let appsWithWindows = Set(allWindows.compactMap { $0.owningApplication?.bundleIdentifier })
-
-        // 自动监控所有应用（包括网易云音乐，排除自己、系统应用、黑名单、无窗口应用）
-        let appsToMonitor = content.applications.filter { app in
-            !app.bundleIdentifier.isEmpty &&
-            app.bundleIdentifier != Bundle.main.bundleIdentifier &&
-            !app.bundleIdentifier.hasPrefix("com.apple.systemuiserver") &&
-            !app.bundleIdentifier.hasPrefix("com.apple.controlcenter") &&
-            !app.bundleIdentifier.hasPrefix("com.apple.finder") &&
-            !blacklistedBundleIDs.contains(app.bundleIdentifier) &&
-            appsWithWindows.contains(app.bundleIdentifier)  // 只监控有窗口的应用
-        }
-
-        logInfo("🎯 将自动监控 \(appsToMonitor.count) 个应用", module: "MultiAppMonitor")
-
-        // 🧪 测试模式：只监控第一个应用
-        let testMode = false
-        let finalAppsToMonitor = testMode ? Array(appsToMonitor.prefix(1)) : appsToMonitor
-
-        if testMode {
-            logInfo("⚠️ 测试模式：只监控 1 个应用", module: "MultiAppMonitor")
-        }
-
-        // 先启动第一个应用的监控（预热，触发权限验证）
-        if let firstApp = finalAppsToMonitor.first {
-            logInfo("🔥 预热：先启动第一个应用的监控", module: "MultiAppMonitor")
-            let (bundleID, stream) = await startMonitoringApp(firstApp)
-            if let stream = stream {
-                appStreams[bundleID] = stream
-            }
-
-            // 等待一下，确保权限完全生效
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
-        }
-
-        // 并行启动剩余应用的监控（限制并发数）
-        let remainingApps = Array(finalAppsToMonitor.dropFirst())
-        let maxConcurrent = 10  // 最多同时启动10个
-        var successCount = appStreams.count  // 包含预热的第一个
-        var timeoutCount = 0
-
-        await withTaskGroup(of: (String, AppAudioStream?).self) { group in
-            var index = 0
-
-            // 分批启动
-            for app in remainingApps {
-                // 限制并发数
-                if index >= maxConcurrent {
-                    // 等待一个任务完成
-                    if let (bundleID, stream) = await group.next() {
-                        if let stream = stream {
-                            appStreams[bundleID] = stream
-                            successCount += 1
-                        } else {
-                            timeoutCount += 1
-                        }
-                    }
-                }
-
-                group.addTask {
-                    await self.startMonitoringApp(app)
-                }
-                index += 1
-            }
-
-            // 收集剩余结果
-            for await (bundleID, stream) in group {
-                if let stream = stream {
-                    appStreams[bundleID] = stream
-                    successCount += 1
-                } else {
-                    timeoutCount += 1
-                }
-            }
+        // 获取当前前台应用并开始监控
+        if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+           let bundleID = frontmostApp.bundleIdentifier {
+            currentFrontmostApp = bundleID
+            await startMonitoringBundleID(bundleID)
         }
 
         isMonitoring = true
-        logSuccess("🎉 多应用音频监控已启动，成功: \(successCount), 超时/失败: \(timeoutCount)", module: "MultiAppMonitor")
+        logSuccess("🎉 动态音频监控已启动", module: "MultiAppMonitor")
     }
 
     /// 停止监控
     func stopMonitoring() async {
         guard isMonitoring else { return }
 
-        logInfo("⏹️ 停止多应用音频监控...", module: "MultiAppMonitor")
+        logInfo("⏹️ 停止动态音频监控...", module: "MultiAppMonitor")
+
+        // 移除应用切换监听器
+        if let observer = workspaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            workspaceObserver = nil
+        }
 
         for stream in appStreams.values {
             await stream.stopCapture()
@@ -156,9 +131,11 @@ class MultiAppAudioMonitor {
 
         appStreams.removeAll()
         applicationVolumes.removeAll()
+        recentApps.removeAll()
+        currentFrontmostApp = nil
         isMonitoring = false
 
-        logSuccess("✅ 多应用音频监控已停止", module: "MultiAppMonitor")
+        logSuccess("✅ 动态音频监控已停止", module: "MultiAppMonitor")
     }
 
     /// 获取所有应用的音量（内部方法，假设已在 updateQueue 中）
@@ -321,6 +298,117 @@ class MultiAppAudioMonitor {
         DispatchQueue.main.async { [weak self] in
             self?.onPlaybackStatusChanged?(hasPlaying)
         }
+    }
+
+    // MARK: - 动态监控方法
+
+    /// 设置应用切换监听
+    private func setupAppSwitchObserver() {
+        workspaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundleID = app.bundleIdentifier else { return }
+
+            Task {
+                await self?.handleAppSwitch(to: bundleID)
+            }
+        }
+        logInfo("👀 已设置应用切换监听", module: "MultiAppMonitor")
+    }
+
+    /// 处理应用切换
+    private func handleAppSwitch(to newBundleID: String) async {
+        guard isMonitoring else { return }
+
+        // 跳过自己和网易云音乐
+        guard newBundleID != Bundle.main.bundleIdentifier,
+              !isNeteaseMusicApp(newBundleID) else {
+            return
+        }
+
+        logInfo("🔄 应用切换到: \(newBundleID)", module: "MultiAppMonitor")
+
+        // 1. 将旧的前台应用加入最近使用列表
+        if let oldApp = currentFrontmostApp, oldApp != newBundleID {
+            recentApps[oldApp] = Date()
+        }
+        currentFrontmostApp = newBundleID
+
+        // 2. 清理过期的最近应用
+        let now = Date()
+        recentApps = recentApps.filter { now.timeIntervalSince($0.value) < recentAppTimeout }
+
+        // 3. 计算需要监控的应用列表
+        var appsToMonitor = Set<String>()
+        appsToMonitor.insert(newBundleID)  // 当前前台应用
+        appsToMonitor.formUnion(recentApps.keys)  // 最近使用的应用
+
+        // 4. 排除网易云音乐和自己
+        appsToMonitor = appsToMonitor.filter {
+            !isNeteaseMusicApp($0) && $0 != Bundle.main.bundleIdentifier
+        }
+
+        // 5. 切换监控目标
+        await switchMonitoringTo(appsToMonitor)
+    }
+
+    /// 切换监控目标
+    private func switchMonitoringTo(_ targetBundleIDs: Set<String>) async {
+        let currentMonitored = Set(appStreams.keys)
+
+        // 1. 停止不再需要监控的应用
+        let toStop = currentMonitored.subtracting(targetBundleIDs)
+        for bundleID in toStop {
+            if let stream = appStreams[bundleID] {
+                logInfo("⏹️ 停止监控: \(bundleID)", module: "MultiAppMonitor")
+                await stream.stopCapture()
+                appStreams.removeValue(forKey: bundleID)
+                updateQueue.async { [weak self] in
+                    self?.applicationVolumes.removeValue(forKey: bundleID)
+                }
+            }
+        }
+
+        // 2. 启动新需要监控的应用
+        let toStart = targetBundleIDs.subtracting(currentMonitored)
+        for bundleID in toStart {
+            await startMonitoringBundleID(bundleID)
+        }
+
+        logDebug("📊 当前监控: \(appStreams.count) 个应用", module: "MultiAppMonitor")
+    }
+
+    /// 根据 bundleID 启动监控
+    private func startMonitoringBundleID(_ bundleID: String) async {
+        // 跳过黑名单应用
+        guard !blacklistedBundleIDs.contains(bundleID) else {
+            logDebug("⏭️ 跳过黑名单应用: \(bundleID)", module: "MultiAppMonitor")
+            return
+        }
+
+        // 查找 SCRunningApplication
+        guard let app = await findRunningApplication(bundleID: bundleID) else {
+            logDebug("⚠️ 找不到应用: \(bundleID)", module: "MultiAppMonitor")
+            return
+        }
+
+        // 启动监控
+        let (_, stream) = await startMonitoringApp(app)
+        if let stream = stream {
+            appStreams[bundleID] = stream
+        }
+    }
+
+    /// 查找运行中的应用
+    private func findRunningApplication(bundleID: String) async -> SCRunningApplication? {
+        let content = try? await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: false
+        )
+        return content?.applications.first { $0.bundleIdentifier == bundleID }
     }
 
     /// 判断是否是网易云音乐应用

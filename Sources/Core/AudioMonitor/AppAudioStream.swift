@@ -22,7 +22,7 @@ class AppAudioStream: NSObject {
 
     // 节流：限制回调频率
     private var lastCallbackTime: Date = .distantPast
-    private let callbackInterval: TimeInterval = 1.0  // 每秒最多1次回调
+    private let callbackInterval: TimeInterval = 1.0  // 每1秒最多1次回调
 
     // 回调
     var onVolumeChanged: ((Float) -> Void)?
@@ -45,19 +45,19 @@ class AppAudioStream: NSObject {
         // 创建配置 - 只捕获音频
         let config = SCStreamConfiguration()
 
-        // 音频配置
+        // 音频配置（最低采样率以大幅减少CPU占用）
         config.capturesAudio = true
-        config.sampleRate = 48000
-        config.channelCount = 2
+        config.sampleRate = 10   // 8kHz（电话音质），最低可用采样率
+        config.channelCount = 1    // 单声道
         config.excludesCurrentProcessAudio = true
 
-        // 视频配置：参考 OBS 的配置
-        config.width = 16
-        config.height = 16
+        // 视频配置：最小化视频捕获开销
+        config.width = 8   // 最小尺寸
+        config.height = 8
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
-        config.queueDepth = 8  // OBS 使用 8
+        config.queueDepth = 2  // 降低队列深度以减少内存占用
 
         // 获取显示器和应用，使用 OBS 的过滤器方式
         // display + includingApplications（而不是 desktopIndependentWindow）
@@ -83,17 +83,10 @@ class AppAudioStream: NSObject {
             delegate: self
         )
 
-        // 添加音频输出（使用 nil 队列，像 OBS 一样）
+        // 只添加音频输出（不添加视频输出以避免显示录屏图标）
         try stream?.addStreamOutput(
             self,
             type: .audio,
-            sampleHandlerQueue: nil
-        )
-
-        // 添加视频输出（像 OBS 一样，用于消除 SCK 错误，帧会在回调中被丢弃）
-        try stream?.addStreamOutput(
-            self,
-            type: .screen,
             sampleHandlerQueue: nil
         )
 
@@ -150,11 +143,15 @@ class AppAudioStream: NSObject {
         let dB = amplitudeToDecibels(rms)
 
         // 更新音量
+        let oldVolume = currentVolume
         currentVolume = dB
 
-        // 节流：限制回调频率到每秒1次
+        // 智能节流：音量变化大时立即响应，否则限制频率
         let now = Date()
-        if now.timeIntervalSince(lastCallbackTime) >= callbackInterval {
+        let volumeChanged = abs(dB - oldVolume) > 5.0  // 音量变化超过5dB
+        let shouldCallback = volumeChanged || now.timeIntervalSince(lastCallbackTime) >= callbackInterval
+
+        if shouldCallback {
             lastCallbackTime = now
 
             // 触发回调
