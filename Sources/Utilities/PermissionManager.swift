@@ -15,35 +15,18 @@ class PermissionManager {
 
     /// 检查是否有屏幕录制权限
     func hasScreenRecordingPermission() -> Bool {
-        // 方法1: 使用 CGPreflightScreenCaptureAccess
-        let preflight = CGPreflightScreenCaptureAccess()
+        // 直接使用 CGPreflightScreenCaptureAccess
+        // 这个 API 会返回实时的权限状态，不会有缓存问题
+        let hasPermission = CGPreflightScreenCaptureAccess()
 
-        // 方法2: 尝试实际捕获来验证（更可靠）
-        // 如果 preflight 返回 true，直接返回
-        if preflight {
-            return true
+        // 调试日志
+        if hasPermission {
+            print("[PermissionManager] 🔧 DEBUG CGPreflightScreenCaptureAccess 返回: true（有权限）")
+        } else {
+            print("[PermissionManager] 🔧 DEBUG CGPreflightScreenCaptureAccess 返回: false（无权限）")
         }
 
-        // 如果 preflight 返回 false，可能是缓存问题，尝试实际检测
-        // 通过尝试获取可共享内容来验证权限
-        do {
-            let semaphore = DispatchSemaphore(value: 0)
-            var hasPermission = false
-
-            Task {
-                do {
-                    _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                    hasPermission = true
-                } catch {
-                    hasPermission = false
-                }
-                semaphore.signal()
-            }
-
-            // 等待最多 2 秒
-            _ = semaphore.wait(timeout: .now() + 2)
-            return hasPermission
-        }
+        return hasPermission
     }
 
     /// 请求屏幕录制权限
