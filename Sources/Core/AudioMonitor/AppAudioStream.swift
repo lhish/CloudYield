@@ -51,29 +51,30 @@ class AppAudioStream: NSObject {
         config.channelCount = 2
         config.excludesCurrentProcessAudio = true
 
-        // 视频配置：使用合理的尺寸，避免触发边界条件 bug
-        // 参考 OBS 的配置：最小 16x16
+        // 视频配置：参考 OBS 的配置
         config.width = 16
         config.height = 16
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 FPS
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
-        config.queueDepth = 5  // 增加队列深度，避免 buffer 管理问题
+        config.queueDepth = 8  // OBS 使用 8
 
-        // 获取应用的窗口，使用 desktopIndependentWindow 过滤器
-        // 这是 OBS 推荐的方式，只捕获应用音频，不涉及显示器
+        // 获取显示器和应用，使用 OBS 的过滤器方式
+        // display + includingApplications（而不是 desktopIndependentWindow）
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        let appWindows = content.windows.filter { $0.owningApplication?.bundleIdentifier == application.bundleIdentifier }
 
-        guard let window = appWindows.first else {
-            throw NSError(domain: "AppAudioStream", code: -1, userInfo: [NSLocalizedDescriptionKey: "找不到应用窗口: \(application.applicationName)"])
+        guard let display = content.displays.first else {
+            throw NSError(domain: "AppAudioStream", code: -1, userInfo: [NSLocalizedDescriptionKey: "找不到显示器"])
         }
 
+        // 创建过滤器：display + including（OBS 方式）
         let filter = SCContentFilter(
-            desktopIndependentWindow: window
+            display: display,
+            including: [application],
+            exceptingWindows: []
         )
 
-        logDebug("创建过滤器: desktopIndependentWindow(\(application.applicationName))", module: "AppAudioStream")
+        logDebug("创建过滤器: display+includingApplications(\(application.applicationName))", module: "AppAudioStream")
 
         // 创建流
         stream = SCStream(
@@ -87,6 +88,13 @@ class AppAudioStream: NSObject {
             self,
             type: .audio,
             sampleHandlerQueue: audioQueue
+        )
+
+        // 添加视频输出（像 OBS 一样，用于消除 SCK 错误，帧会在回调中被丢弃）
+        try stream?.addStreamOutput(
+            self,
+            type: .screen,
+            sampleHandlerQueue: nil
         )
 
         // 启动捕获（支持取消）
