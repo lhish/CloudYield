@@ -15,9 +15,34 @@ class PermissionManager {
 
     /// 检查是否有屏幕录制权限（仅检查，不会触发请求）
     func hasScreenRecordingPermission() -> Bool {
-        // 使用 CGPreflightScreenCaptureAccess 只检查权限，不请求
-        // 这个函数是非侵入式的，只读取当前权限状态
-        return CGPreflightScreenCaptureAccess()
+        let result = CGPreflightScreenCaptureAccess()
+        print("🔍 [PermissionManager] CGPreflightScreenCaptureAccess() 返回: \(result)")
+
+        // 额外验证：检查TCC数据库
+        let task = Process()
+        task.launchPath = "/usr/bin/sqlite3"
+        task.arguments = [
+            "\(NSHomeDirectory())/Library/Application Support/com.apple.TCC/TCC.db",
+            "SELECT service, allowed FROM access WHERE service = 'kTCCServiceScreenCapture';"
+        ]
+
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                print("🔍 [PermissionManager] TCC数据库查询结果: \(output)")
+            }
+        } catch {
+            print("⚠️ [PermissionManager] TCC数据库查询失败: \(error)")
+        }
+
+        return result
     }
 
     /// 请求屏幕录制权限（会弹出系统权限对话框）

@@ -70,6 +70,7 @@ class AudioMonitorService: NSObject {
             // 音频配置
             config.sampleRate = 48000 // 48kHz 采样率
             config.channelCount = 2   // 立体声
+
             logDebug("音频配置: 采样率=\(config.sampleRate), 声道=\(config.channelCount)", module: "AudioMonitor")
 
             // 3. 创建内容过滤器（捕获所有音频）
@@ -183,14 +184,19 @@ class AudioMonitorService: NSObject {
             blockBufferOut: &blockBuffer
         )
 
-        // 复制数据
+        // 复制数据到PCM buffer
         if let channelData = buffer.floatChannelData {
-            for channel in 0..<Int(buffer.format.channelCount) {
-                if let sourceData = audioBufferList.mBuffers.mData {
-                    let source = sourceData.assumingMemoryBound(to: Float.self)
-                    let destination = channelData[channel]
-                    destination.update(from: source, count: Int(buffer.frameLength))
-                }
+            // 获取AudioBufferList指针
+            let ablPointer = UnsafeMutableAudioBufferListPointer(&audioBufferList)
+
+            for channel in 0..<min(Int(buffer.format.channelCount), Int(ablPointer.count)) {
+                guard let sourceData = ablPointer[channel].mData else { continue }
+
+                let source = sourceData.assumingMemoryBound(to: Float.self)
+                let destination = channelData[channel]
+                let framesToCopy = min(Int(buffer.frameLength), Int(ablPointer[channel].mDataByteSize) / MemoryLayout<Float>.size)
+
+                destination.update(from: source, count: framesToCopy)
             }
         }
 
