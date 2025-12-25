@@ -66,14 +66,13 @@ class MultiAppAudioMonitor {
         let allWindows = content.windows
         let appsWithWindows = Set(allWindows.compactMap { $0.owningApplication?.bundleIdentifier })
 
-        // 自动监控所有应用（排除自己、系统应用、黑名单、无窗口应用）
+        // 自动监控所有应用（包括网易云音乐，排除自己、系统应用、黑名单、无窗口应用）
         let appsToMonitor = content.applications.filter { app in
             !app.bundleIdentifier.isEmpty &&
             app.bundleIdentifier != Bundle.main.bundleIdentifier &&
             !app.bundleIdentifier.hasPrefix("com.apple.systemuiserver") &&
             !app.bundleIdentifier.hasPrefix("com.apple.controlcenter") &&
             !app.bundleIdentifier.hasPrefix("com.apple.finder") &&
-            !isNeteaseMusicApp(app.bundleIdentifier) &&
             !blacklistedBundleIDs.contains(app.bundleIdentifier) &&
             appsWithWindows.contains(app.bundleIdentifier)  // 只监控有窗口的应用
         }
@@ -162,16 +161,21 @@ class MultiAppAudioMonitor {
         logSuccess("✅ 多应用音频监控已停止", module: "MultiAppMonitor")
     }
 
-    /// 获取所有应用的音量
+    /// 获取所有应用的音量（内部方法，假设已在 updateQueue 中）
+    private func getApplicationVolumesUnsafe() -> [String: Float] {
+        return applicationVolumes
+    }
+
+    /// 获取所有应用的音量（外部调用，线程安全）
     func getApplicationVolumes() -> [String: Float] {
         return updateQueue.sync {
             return applicationVolumes
         }
     }
 
-    /// 检查是否有其他应用在播放
-    func hasOtherAppPlaying() -> Bool {
-        let volumes = getApplicationVolumes()
+    /// 检查是否有其他应用在播放（内部方法，假设已在 updateQueue 中）
+    private func hasOtherAppPlayingUnsafe() -> Bool {
+        let volumes = applicationVolumes
 
         // 排除网易云音乐
         let otherAppsPlaying = volumes.filter { bundleID, volume in
@@ -181,9 +185,16 @@ class MultiAppAudioMonitor {
         return !otherAppsPlaying.isEmpty
     }
 
-    /// 获取正在播放的应用名称
-    func getPlayingApplications() -> [String] {
-        let volumes = getApplicationVolumes()
+    /// 检查是否有其他应用在播放（外部调用，线程安全）
+    func hasOtherAppPlaying() -> Bool {
+        return updateQueue.sync {
+            return hasOtherAppPlayingUnsafe()
+        }
+    }
+
+    /// 获取正在播放的应用名称（内部方法，假设已在 updateQueue 中）
+    private func getPlayingApplicationsUnsafe() -> [String] {
+        let volumes = applicationVolumes
 
         return volumes.compactMap { bundleID, volume in
             guard volume > volumeThreshold,
@@ -192,6 +203,13 @@ class MultiAppAudioMonitor {
                 return nil
             }
             return stream.application.applicationName
+        }
+    }
+
+    /// 获取正在播放的应用名称（外部调用，线程安全）
+    func getPlayingApplications() -> [String] {
+        return updateQueue.sync {
+            return getPlayingApplicationsUnsafe()
         }
     }
 
@@ -290,8 +308,9 @@ class MultiAppAudioMonitor {
     }
 
     private func checkAndNotifyPlaybackStatus() {
-        let hasPlaying = hasOtherAppPlaying()
-        let playingApps = getPlayingApplications()
+        // 注意：此方法假设已在 updateQueue 中调用
+        let hasPlaying = hasOtherAppPlayingUnsafe()
+        let playingApps = getPlayingApplicationsUnsafe()
 
         if hasPlaying {
             logInfo("▶️ 检测到其他应用正在播放: \(playingApps.joined(separator: ", "))", module: "MultiAppMonitor")
