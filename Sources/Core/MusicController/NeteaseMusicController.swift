@@ -124,17 +124,32 @@ class NeteaseMusicController {
 
     // MARK: - Private Methods
 
-    /// 执行 AppleScript
+    /// 执行 AppleScript（通过 osascript 命令）
     private func executeAppleScript(_ script: String) -> String {
-        var error: NSDictionary?
-        let appleScript = NSAppleScript(source: script)
-        let output = appleScript?.executeAndReturnError(&error)
+        let process = Process()
+        let pipe = Pipe()
 
-        if let error = error {
-            logError("AppleScript 错误: \(error)", module: "MusicController")
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            if process.terminationStatus != 0 {
+                logDebug("osascript 退出码: \(process.terminationStatus), 输出: \(output)", module: "MusicController")
+                return "error: \(output)"
+            }
+
+            return output
+        } catch {
+            logError("执行 osascript 失败: \(error)", module: "MusicController")
             return "error: \(error)"
         }
-
-        return output?.stringValue ?? ""
     }
 }
