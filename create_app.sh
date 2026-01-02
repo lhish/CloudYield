@@ -8,7 +8,7 @@ set -e
 echo "📦 创建 macOS 应用包..."
 echo "=========================================="
 
-APP_NAME="StillMusicWhenBack"
+APP_NAME="CloudYield"
 BUILD_DIR=".build/release"
 APP_DIR="$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -54,13 +54,13 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>StillMusicWhenBack</string>
+    <string>CloudYield</string>
     <key>CFBundleIdentifier</key>
-    <string>com.lhish.stillmusicwhenback</string>
+    <string>com.lhish.cloudyield</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>StillMusicWhenBack</string>
+    <string>CloudYield</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -114,7 +114,7 @@ codesign --remove-signature "$APP_DIR" 2>/dev/null || true
 # 使用 ad-hoc 签名但保持 identifier 一致，并启用 Hardened Runtime
 # 关键：使用 --preserve-metadata 来保持元数据一致性
 codesign --force --deep --sign - \
-    --identifier "com.lhish.stillmusicwhenback" \
+    --identifier "com.lhish.cloudyield" \
     --entitlements "$CONTENTS_DIR/Entitlements.plist" \
     --options runtime \
     --timestamp=none \
@@ -155,6 +155,6 @@ echo ""
 echo "=========================================="
 echo "💡 提示："
 echo "  - 首次运行会自动请求权限"
-echo "  - 权限会授予给 'StillMusicWhenBack' 应用"
+echo "  - 权限会授予给 'CloudYield' 应用"
 echo "  - 而不是 Terminal"
 echo "=========================================="

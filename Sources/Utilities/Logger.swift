@@ -18,19 +18,19 @@ class Logger {
     private let logDirectory: URL
     private let logFileName = "app.log"
     private var logFileHandle: FileHandle?
-    private let queue = DispatchQueue(label: "com.stillmusicwhenback.logger", qos: .utility)
+    private let queue = DispatchQueue(label: "com.cloudyield.logger", qos: .utility)
 
     // 配置
     private let maxLogFileSize: Int = 10 * 1024 * 1024 // 10 MB
     private let maxLogFiles = 5 // 保留最多 5 个历史日志文件
 
     private init() {
-        // 日志目录: ~/Library/Logs/StillMusicWhenBack/
+        // 日志目录: ~/Library/Logs/CloudYield/
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         logDirectory = homeDir
             .appendingPathComponent("Library")
             .appendingPathComponent("Logs")
-            .appendingPathComponent("StillMusicWhenBack")
+            .appendingPathComponent("CloudYield")
 
         setupLogDirectory()
         setupLogFile()

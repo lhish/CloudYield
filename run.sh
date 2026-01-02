@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-# StillMusicWhenBack - 快速运行脚本
+# CloudYield - 快速运行脚本
 #
 
-echo "🎵 StillMusicWhenBack - 智能音乐助手"
+echo "🎵 CloudYield - 智能音乐助手"
 echo "=========================================="
 echo ""
 
 # 检查构建产物是否存在
-if [ ! -f ".build/debug/StillMusicWhenBack" ]; then
+if [ ! -f ".build/debug/CloudYield" ]; then
     echo "⚠️  未找到可执行文件，正在构建..."
     swift build
 
@@ -34,4 +34,4 @@ echo "=========================================="
 echo ""
 
 # 运行应用
-exec .build/debug/StillMusicWhenBack
+exec .build/debug/CloudYield

@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "StillMusicWhenBack",
+    name: "CloudYield",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
-            name: "StillMusicWhenBack",
-            targets: ["StillMusicWhenBack"]
+            name: "CloudYield",
+            targets: ["CloudYield"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "StillMusicWhenBack",
+            name: "CloudYield",
             path: "Sources"
         )
     ]

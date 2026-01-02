@@ -1,11 +1,11 @@
 #!/bin/bash
 #
-# 安装 StillMusicWhenBack 到 /Applications/
+# 安装 CloudYield 到 /Applications/
 #
 
 set -e
 
-APP_NAME="StillMusicWhenBack"
+APP_NAME="CloudYield"
 SOURCE_APP="./$APP_NAME.app"
 TARGET_APP="/Applications/$APP_NAME.app"
 

@@ -1,4 +1,4 @@
-# StillMusicWhenBack
+# CloudYield
 
 🎵 让网易云音乐更智能 - 当其他应用播放音频时自动暂停网易云，停止后自动恢复。
 
@@ -29,14 +29,15 @@ brew install ungive/media-control/media-control
 
 ### 下载
 
-从 [Releases](https://github.com/lhish/StillMusicWhenBack/releases) 下载最新版本的 `.app` 文件。
+从 [Releases](https://github.com/lhish/CloudYield/releases) 下载最新版本的 `.app` 文件。
 
 ### 从源码构建
 
 ```bash
-git clone https://github.com/lhish/StillMusicWhenBack.git
-cd StillMusicWhenBack
+git clone https://github.com/lhish/CloudYield.git
+cd CloudYield
 swift build -c release
+./create_app.sh  # 创建 .app 应用包
 ```
 
 ## 使用方法
@@ -82,6 +83,10 @@ swift build -c release
 ## 权限说明
 
 - **辅助功能权限**：用于通过 AppleScript 控制网易云音乐的播放/暂停
+
+## 日志
+
+应用日志保存在 `~/Library/Logs/CloudYield/`，可通过菜单栏的「打开日志目录」查看。
 
 ## 许可证
 

@@ -85,7 +85,7 @@ class MenuBarController: NSObject {
 
         // 关于
         let aboutItem = NSMenuItem(
-            title: "关于 StillMusicWhenBack",
+            title: "关于 CloudYield",
             action: #selector(showAbout),
             keyEquivalent: ""
         )
@@ -158,11 +158,11 @@ class MenuBarController: NSObject {
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "StillMusicWhenBack"
+        alert.messageText = "CloudYield"
         alert.informativeText = """
         版本: 1.0.0
         作者: lhy
-        开源地址: github.com/lhish/StillMusicWhenBack
+        开源地址: github.com/lhish/CloudYield
 
         🎵 让网易云音乐更智能
 
@@ -186,7 +186,7 @@ class MenuBarController: NSObject {
 
         let response = alert.runModal()
         if response == .alertSecondButtonReturn {
-            if let url = URL(string: "https://github.com/lhish/StillMusicWhenBack") {
+            if let url = URL(string: "https://github.com/lhish/CloudYield") {
                 NSWorkspace.shared.open(url)
             }
         }

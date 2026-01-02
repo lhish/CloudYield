@@ -1,6 +1,6 @@
 //
-//  StillMusicWhenBackApp.swift
-//  StillMusicWhenBack
+//  CloudYieldApp.swift
+//  CloudYield
 //
 //  应用程序主入口
 //
@@ -10,7 +10,7 @@ import ServiceManagement
 import AppKit
 
 @main
-struct StillMusicWhenBackApp: App {
+struct CloudYieldApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -124,7 +124,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 持续检测直到有权限（不再重复请求）
         logInfo("等待用户授予辅助功能权限...", module: "App")
-        logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
+        logInfo("请在系统设置中勾选 CloudYield", module: "App")
 
         var attempts = 0
         while !permissionManager.hasAccessibilityPermission() {
@@ -205,7 +205,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showLaunchAtLoginAlert() {
         let alert = NSAlert()
         alert.messageText = "开机自启动"
-        alert.informativeText = "是否希望 StillMusicWhenBack 在开机时自动启动？"
+        alert.informativeText = "是否希望 CloudYield 在开机时自动启动？"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "是")
         alert.addButton(withTitle: "否")
