@@ -28,13 +28,9 @@ class StateTransitionEngine {
     // 缓存 NowPlaying 状态
     private var lastNowPlayingStatus = NowPlayingStatus.idle
 
-    // 计时器（延迟执行暂停/恢复操作）
-    private var pauseTimer: DelayTimer?
-    private var resumeTimer: DelayTimer?
-
     // 定时刷新网易云状态的计时器
     private var refreshTimer: Timer?
-    private let refreshInterval: TimeInterval = 2.0  // 每2秒刷新一次
+    private let refreshInterval: TimeInterval = 0.1  // 每0.1秒刷新一次
 
     // 状态变化回调
     var onStateChanged: ((AppState) -> Void)?
@@ -44,19 +40,6 @@ class StateTransitionEngine {
     init(musicController: NeteaseMusicController, mediaMonitor: MediaMonitorProtocol) {
         self.musicController = musicController
         self.mediaMonitor = mediaMonitor
-
-        // 初始化计时器（3秒延迟）
-        pauseTimer = DelayTimer(delay: 3.0)
-        resumeTimer = DelayTimer(delay: 3.0)
-
-        // 设置计时器回调
-        pauseTimer?.onTimerExpired = { [weak self] in
-            self?.executePause()
-        }
-
-        resumeTimer?.onTimerExpired = { [weak self] in
-            self?.executeResume()
-        }
     }
 
     // MARK: - Public Methods
@@ -75,8 +58,6 @@ class StateTransitionEngine {
     /// 停止状态引擎
     func stop() {
         logInfo("停止状态引擎", module: "StateEngine")
-        pauseTimer?.stop()
-        resumeTimer?.stop()
         stopRefreshTimer()
     }
 
@@ -148,31 +129,27 @@ class StateTransitionEngine {
 
     /// 处理状态转换
     private func handleStateTransition(from oldState: AppState, to newState: AppState) {
-        // 取消之前的计时器
-        pauseTimer?.stop()
-        resumeTimer?.stop()
-
         switch (oldState, newState) {
         // 进入 S3（冲突状态）：其他应用播放 + 网易云也在播放
-        // 需要启动暂停计时器
+        // 立即暂停网易云
         case (_, .s3_otherPlayingNeteasePlaying):
-            logInfo("检测到冲突状态，启动暂停计时器...", module: "StateEngine")
-            pauseTimer?.start()
+            logInfo("检测到冲突状态，立即暂停网易云...", module: "StateEngine")
+            executePause()
 
         // 从 S4 转到 S6：其他应用停止播放，网易云仍暂停
-        // 如果是软件暂停的，需要启动恢复计时器
+        // 如果是软件暂停的，立即恢复
         case (.s4_otherPlayingNeteasePaused, .s6_otherIdleNeteasePaused):
             if wasPausedByApp {
-                logInfo("其他应用停止，启动恢复计时器...", module: "StateEngine")
-                resumeTimer?.start()
+                logInfo("其他应用停止，立即恢复网易云...", module: "StateEngine")
+                executeResume()
             }
 
         // 从 S4 转到 S2：其他应用停止，NowPlaying 切回网易云但暂停
-        // 如果是软件暂停的，需要启动恢复计时器
+        // 如果是软件暂停的，立即恢复
         case (.s4_otherPlayingNeteasePaused, .s2_neteasePausedAsNowPlaying):
             if wasPausedByApp {
-                logInfo("NowPlaying 切回网易云，启动恢复计时器...", module: "StateEngine")
-                resumeTimer?.start()
+                logInfo("NowPlaying 切回网易云，立即恢复...", module: "StateEngine")
+                executeResume()
             }
 
         // 网易云被用户手动暂停（非冲突状态下从播放变为暂停）
@@ -199,16 +176,16 @@ class StateTransitionEngine {
         // 再次检查网易云是否在播放
         guard musicController.isPlaying() else {
             logInfo("网易云已不在播放，跳过暂停", module: "StateEngine")
-            updateState()
             return
         }
 
-        logInfo("执行暂停网易云...", module: "StateEngine")
         musicController.pause()
         wasPausedByApp = true
 
         // 更新状态
-        updateState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.updateState()
+        }
     }
 
     /// 执行恢复操作
@@ -225,11 +202,12 @@ class StateTransitionEngine {
             return
         }
 
-        logInfo("执行恢复网易云...", module: "StateEngine")
         musicController.play()
         wasPausedByApp = false
 
         // 更新状态
-        updateState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.updateState()
+        }
     }
 }

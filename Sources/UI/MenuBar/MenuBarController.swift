@@ -15,6 +15,7 @@ class MenuBarController: NSObject {
     private let stateEngine: StateTransitionEngine
     private var menu: NSMenu?
     private var statusMenuItem: NSMenuItem?
+    private var launchAtLoginMenuItem: NSMenuItem?
 
     // MARK: - Initialization
 
@@ -52,6 +53,20 @@ class MenuBarController: NSObject {
         )
         statusMenuItem?.isEnabled = false
         if let item = statusMenuItem {
+            menu?.addItem(item)
+        }
+
+        menu?.addItem(NSMenuItem.separator())
+
+        // 开机自启
+        launchAtLoginMenuItem = NSMenuItem(
+            title: "开机自启",
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        launchAtLoginMenuItem?.target = self
+        launchAtLoginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
+        if let item = launchAtLoginMenuItem {
             menu?.addItem(item)
         }
 
@@ -131,29 +146,50 @@ class MenuBarController: NSObject {
 
     // MARK: - Actions
 
+    @objc private func toggleLaunchAtLogin() {
+        LaunchAtLoginManager.toggle()
+        launchAtLoginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
+        logInfo("开机自启: \(LaunchAtLoginManager.isEnabled ? "已启用" : "已禁用")", module: "MenuBar")
+    }
+
     @objc private func openLogDirectory() {
         Logger.shared.openLogDirectory()
     }
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "关于 StillMusicWhenBack"
+        alert.messageText = "StillMusicWhenBack"
         alert.informativeText = """
         版本: 1.0.0
+        作者: lhy
+        开源地址: github.com/lhy/StillMusicWhenBack
 
-        功能：
-        • 监控系统 Now Playing 状态
-        • 检测到其他应用播放时自动暂停网易云音乐
-        • 其他应用停止后自动恢复播放
+        🎵 让网易云音乐更智能
 
-        使用方法：
-        1. 确保已授予辅助功能权限
-        2. 播放网易云音乐
-        3. 应用会在后台自动工作
+        功能特性：
+        • 检测到其他应用播放音频时自动暂停网易云
+        • 其他应用停止播放后自动恢复网易云
+        • 响应速度 0.1 秒，几乎无感知
+
+        工作原理：
+        • 使用 media-control 监控系统 Now Playing 状态
+        • 使用 AppleScript 控制网易云音乐播放/暂停
+
+        依赖：
+        • brew install ungive/media-control/media-control
+
+        许可证: MIT License
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好的")
-        alert.runModal()
+        alert.addButton(withTitle: "访问 GitHub")
+
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            if let url = URL(string: "https://github.com/lhy/StillMusicWhenBack") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     @objc private func quit() {

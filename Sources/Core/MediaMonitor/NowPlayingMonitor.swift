@@ -36,7 +36,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
 
     // 轮询定时器
     private var pollTimer: Timer?
-    private let pollInterval: TimeInterval = 1.0  // 每秒检查一次
+    private let pollInterval: TimeInterval = 0.1  // 每0.1秒检查一次
 
     // media-control 路径
     private let mediaControlPath: String
