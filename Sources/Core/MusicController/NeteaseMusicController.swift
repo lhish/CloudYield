@@ -19,11 +19,27 @@ class NeteaseMusicController {
     // 缓存上一次的播放状态
     private var lastKnownState: PlaybackState = .unknown
 
+    // media-control 路径
+    private let mediaControlPath: String
+
     enum PlaybackState {
         case playing
         case paused
         case stopped
         case unknown
+    }
+
+    // MARK: - Initialization
+
+    init() {
+        // 查找 media-control 路径
+        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/media-control") {
+            mediaControlPath = "/opt/homebrew/bin/media-control"
+        } else if FileManager.default.fileExists(atPath: "/usr/local/bin/media-control") {
+            mediaControlPath = "/usr/local/bin/media-control"
+        } else {
+            mediaControlPath = "media-control"
+        }
     }
 
     // MARK: - Public Methods
@@ -117,12 +133,67 @@ class NeteaseMusicController {
 
     // MARK: - Private Methods
 
-    /// 获取当前播放状态
+    /// 获取当前播放状态（优先使用 media-control，失败时用 AppleScript）
     private func getPlaybackState() -> PlaybackState {
         guard isRunning() else {
             return .stopped
         }
 
+        // 方案1: 使用 media-control 获取 Now Playing 信息
+        if let state = getPlaybackStateFromMediaControl() {
+            return state
+        }
+
+        // 方案2: 备用 AppleScript 方案
+        return getPlaybackStateFromAppleScript()
+    }
+
+    /// 使用 media-control 获取播放状态
+    private func getPlaybackStateFromMediaControl() -> PlaybackState? {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: mediaControlPath)
+        process.arguments = ["get"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+
+            // 检查是否返回 null
+            if let jsonString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               jsonString == "null" {
+                return nil
+            }
+
+            // 解析 JSON
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let bundleID = json["bundleIdentifier"] as? String ?? ""
+                let isPlaying = json["playing"] as? Bool ?? false
+
+                // 检查是否是网易云音乐
+                if isNeteaseMusicApp(bundleID) {
+                    logDebug("media-control 检测: 网易云 playing=\(isPlaying)", module: "MusicController")
+                    return isPlaying ? .playing : .paused
+                } else {
+                    // Now Playing 不是网易云，说明网易云不在播放
+                    logDebug("media-control 检测: Now Playing 是其他应用 (\(bundleID))", module: "MusicController")
+                    return .paused
+                }
+            }
+        } catch {
+            logDebug("media-control 获取失败: \(error)", module: "MusicController")
+        }
+
+        return nil
+    }
+
+    /// 使用 AppleScript 获取播放状态（备用方案）
+    private func getPlaybackStateFromAppleScript() -> PlaybackState {
         // 通过检查菜单项来判断状态
         let script = """
         tell application "System Events"
@@ -146,9 +217,22 @@ class NeteaseMusicController {
             // 如果菜单显示"播放"，说明当前是暂停状态
             return .paused
         } else {
-            logWarning("无法获取播放状态: \(result)", module: "MusicController")
+            logWarning("AppleScript 无法获取播放状态: \(result)", module: "MusicController")
             return .unknown
         }
+    }
+
+    /// 判断是否为网易云音乐应用
+    private func isNeteaseMusicApp(_ bundleID: String) -> Bool {
+        let neteaseBundleIDs = [
+            "com.netease.163music",
+            "com.netease.Music",
+            "com.netease.CloudMusic"
+        ]
+
+        return neteaseBundleIDs.contains(bundleID) ||
+               bundleID.lowercased().contains("netease") ||
+               bundleID.lowercased().contains("163music")
     }
 
     /// 执行 AppleScript
