@@ -23,7 +23,7 @@ struct StillMusicWhenBackApp: App {
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     // 核心服务
-    private var mediaMonitor: MultiAppAudioMonitorAdapter?
+    private var mediaMonitor: NowPlayingMonitor?
     private var musicController: NeteaseMusicController?
     private var stateEngine: StateTransitionEngine?
     private var menuBarController: MenuBarController?
@@ -38,13 +38,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 异步等待权限并初始化服务
         Task {
-            // 1. 先等待屏幕录制权限
-            await checkScreenRecordingPermission()
-
-            // 2. 再等待辅助功能权限
+            // Now Playing 监控不需要屏幕录制权限，只需要辅助功能权限
+            // 1. 等待辅助功能权限
             await checkAccessibilityPermission()
 
-            // 3. 权限都授予后，再初始化核心服务
+            // 2. 权限授予后，初始化核心服务
             await MainActor.run {
                 initializeServices()
             }
@@ -181,8 +179,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
-        // 2. 初始化多应用音频监控服务（基于 OBS 方案）
-        mediaMonitor = MultiAppAudioMonitorAdapter()
+        // 2. 初始化 Now Playing 监控服务（无需屏幕录制权限，无录屏角标）
+        mediaMonitor = NowPlayingMonitor()
 
         // 3. 初始化状态引擎
         if let musicController = musicController, let mediaMonitor = mediaMonitor {
@@ -202,9 +200,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menuBarController = MenuBarController(stateEngine: stateEngine)
         }
 
-        // 5. 启动多应用音频监控（自动监控所有应用）
+        // 5. 启动 Now Playing 监控
         mediaMonitor?.startMonitoring()
-        logSuccess("多应用音频监控已启动（基于 OBS 方案）", module: "App")
+        logSuccess("Now Playing 监控已启动（无录屏角标）", module: "App")
 
         // 6. 启动状态引擎
         stateEngine?.start()
