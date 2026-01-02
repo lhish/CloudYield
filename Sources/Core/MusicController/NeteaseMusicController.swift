@@ -27,6 +27,7 @@ class NeteaseMusicController {
     /// 检查网易云音乐是否正在播放（通过 AppleScript 检测菜单项）
     func isPlaying() -> Bool {
         guard isRunning() else {
+            // 网易云未运行，不输出警告
             return false
         }
 
@@ -53,7 +54,8 @@ class NeteaseMusicController {
             // 如果菜单显示"播放"，说明当前是暂停状态
             return false
         } else {
-            logWarning("AppleScript 无法获取播放状态: \(result)", module: "MusicController")
+            // 只在第一次失败时警告，避免日志刷屏
+            logDebug("AppleScript 获取播放状态返回: \(result)", module: "MusicController")
             return false
         }
     }
