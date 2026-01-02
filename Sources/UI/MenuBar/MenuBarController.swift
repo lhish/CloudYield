@@ -161,7 +161,7 @@ class MenuBarController: NSObject {
         alert.messageText = "CloudYield"
         alert.informativeText = """
         版本: 1.0.0
-        作者: lhy
+        作者: lhish
         开源地址: github.com/lhish/CloudYield
 
         🎵 让网易云音乐更智能
@@ -178,7 +178,7 @@ class MenuBarController: NSObject {
         依赖：
         • brew install ungive/media-control/media-control
 
-        许可证: MIT License
+        许可证: GPL-3.0 License
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好的")
