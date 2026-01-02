@@ -19,17 +19,23 @@
 
 ## 安装
 
-### 依赖
+### Homebrew（推荐）
 
-首先安装 `media-control`（用于监控系统 Now Playing 状态）：
+```bash
+brew tap lhish/cloudyield
+brew install --cask cloudyield
+```
 
+依赖 `media-control` 会自动安装。
+
+### 手动下载
+
+从 [Releases](https://github.com/lhish/CloudYield/releases) 下载最新版本的 `.app` 文件。
+
+需要先安装依赖：
 ```bash
 brew install ungive/media-control/media-control
 ```
-
-### 下载
-
-从 [Releases](https://github.com/lhish/CloudYield/releases) 下载最新版本的 `.app` 文件。
 
 ### 从源码构建
 
