@@ -162,7 +162,7 @@ class MenuBarController: NSObject {
         alert.informativeText = """
         版本: 1.0.0
         作者: lhy
-        开源地址: github.com/lhy/StillMusicWhenBack
+        开源地址: github.com/lhish/StillMusicWhenBack
 
         🎵 让网易云音乐更智能
 
@@ -186,7 +186,7 @@ class MenuBarController: NSObject {
 
         let response = alert.runModal()
         if response == .alertSecondButtonReturn {
-            if let url = URL(string: "https://github.com/lhy/StillMusicWhenBack") {
+            if let url = URL(string: "https://github.com/lhish/StillMusicWhenBack") {
                 NSWorkspace.shared.open(url)
             }
         }

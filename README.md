@@ -1,247 +1,92 @@
 # StillMusicWhenBack
 
-一个智能的 macOS 应用，可以在检测到其他声音时自动暂停网易云音乐，并在声音停止后自动恢复播放。
+🎵 让网易云音乐更智能 - 当其他应用播放音频时自动暂停网易云，停止后自动恢复。
 
-## ✨ 功能特性
+## 功能特性
 
-- 🎵 **智能音频检测** - 实时监控系统音频输出，智能识别有效声音
-- ⏸️ **自动暂停/恢复** - 检测到其他声音持续 3 秒后自动暂停网易云音乐
-- 🔄 **自动恢复播放** - 其他声音停止 3 秒后自动恢复播放
-- 🚀 **开机自启动** - 支持开机自动启动，后台常驻
-- 📊 **菜单栏集成** - 简洁的菜单栏界面，实时显示状态
-- 📝 **自动日志记录** - 所有日志自动保存到文件，方便调试和问题诊断
-- 🔒 **隐私保护** - 所有音频处理都在本地完成，不上传任何数据
+- 🔊 检测到其他应用播放音频时**自动暂停**网易云音乐
+- ▶️ 其他应用停止播放后**自动恢复**网易云音乐
+- ⚡ 响应速度 **0.1 秒**，几乎无感知
+- 🖥️ 菜单栏应用，后台静默运行
+- 🚀 支持开机自启
 
-## 📋 系统要求
+## 使用场景
 
-- macOS 13.0 (Ventura) 或更高版本
-- Xcode 15.0 或更高版本（用于构建）
+- 看 B 站视频时自动暂停音乐，关闭视频后自动恢复
+- 开会时打开腾讯会议/Zoom 自动暂停音乐
+- 玩游戏时自动暂停背景音乐
+- 任何需要临时暂停音乐的场景
+
+## 安装
+
+### 依赖
+
+首先安装 `media-control`（用于监控系统 Now Playing 状态）：
+
+```bash
+brew install ungive/media-control/media-control
+```
+
+### 下载
+
+从 [Releases](https://github.com/lhish/StillMusicWhenBack/releases) 下载最新版本的 `.app` 文件。
+
+### 从源码构建
+
+```bash
+git clone https://github.com/lhish/StillMusicWhenBack.git
+cd StillMusicWhenBack
+swift build -c release
+```
+
+## 使用方法
+
+1. 首次启动时，授予**辅助功能权限**（用于控制网易云音乐）
+2. 打开网易云音乐并播放音乐
+3. 应用会在后台自动工作
+4. 点击菜单栏图标可以查看当前状态
+
+### 菜单栏图标说明
+
+| 图标 | 状态 |
+|------|------|
+| 🎵 | 网易云音乐播放中 |
+| ⏸ | 网易云音乐已暂停 |
+| 🔊 | 检测到其他应用播放中 |
+
+## 工作原理
+
+1. 使用 `media-control` 监控系统 **Now Playing** 状态
+2. 检测到非网易云应用播放时，通过 **AppleScript** 暂停网易云
+3. 检测到其他应用停止播放时，自动恢复网易云
+
+### 6 状态模型
+
+应用内部使用 6 状态有限状态机管理：
+
+| 状态 | NowPlaying | 网易云 | 说明 |
+|------|------------|--------|------|
+| S1 | 网易云播放 | 播放 | 正常播放 |
+| S2 | 网易云暂停 | 暂停 | 正常暂停 |
+| S3 | 其他播放 | 播放 | 冲突 → 自动暂停 |
+| S4 | 其他播放 | 暂停 | 已暂停 |
+| S5 | 其他空闲 | 播放 | 正常播放 |
+| S6 | 其他空闲 | 暂停 | 正常暂停 |
+
+## 系统要求
+
+- macOS 13.0+
 - 网易云音乐 macOS 版
+- `media-control` CLI 工具
 
-## 🛠️ 构建和安装
+## 权限说明
 
-### 1. 克隆项目
+- **辅助功能权限**：用于通过 AppleScript 控制网易云音乐的播放/暂停
 
-```bash
-cd /Users/lhy/CLionProjects/still_music_when_back
-```
+## 许可证
 
-### 2. 创建 Xcode 项目
+[MIT License](LICENSE)
 
-请按照 [SETUP_GUIDE.md](SETUP_GUIDE.md) 中的详细步骤创建 Xcode 项目。
+## 致谢
 
-### 3. 添加源代码文件
-
-将 `SourceFiles/` 目录中的所有文件添加到 Xcode 项目的对应位置：
-
-```
-SourceFiles/
-├── App/
-│   └── StillMusicWhenBackApp.swift          → 拖入 Xcode 项目的 StillMusicWhenBack/ 目录
-├── Core/
-│   ├── AudioMonitor/
-│   │   ├── AudioMonitorService.swift
-│   │   └── AudioLevelDetector.swift
-│   ├── MusicController/
-│   │   └── NeteaseMusicController.swift
-│   ├── StateManager/
-│   │   ├── MonitorState.swift
-│   │   └── StateTransitionEngine.swift
-│   └── Timer/
-│       └── DelayTimer.swift
-├── UI/
-│   └── MenuBar/
-│       └── MenuBarController.swift
-└── Utilities/
-    ├── PermissionManager.swift
-    └── LaunchAtLoginManager.swift
-```
-
-### 4. 配置权限
-
-在 Xcode 中配置 `Info.plist`（详见 SETUP_GUIDE.md）。
-
-### 5. 构建和运行
-
-1. 在 Xcode 中选择目标为 **My Mac**
-2. 点击 **Run** 按钮（⌘+R）
-3. 首次运行时授予必要的系统权限
-
-## 🔐 所需权限
-
-应用需要以下系统权限才能正常工作：
-
-### 1. 屏幕录制权限（Screen Recording）
-
-**用途**：监控系统音频输出
-
-**授予方法**：
-1. 打开 **系统设置** → **隐私与安全性** → **屏幕录制**
-2. 勾选 **StillMusicWhenBack**
-3. 重启应用
-
-### 2. 辅助功能权限（Accessibility）
-
-**用途**：控制网易云音乐的播放/暂停
-
-**授予方法**：
-1. 打开 **系统设置** → **隐私与安全性** → **辅助功能**
-2. 勾选 **StillMusicWhenBack**
-
-## 🎯 使用方法
-
-1. **启动应用**
-   - 首次启动时会显示权限请求提示
-   - 授予必要权限后应用会在菜单栏显示图标
-
-2. **状态指示**
-   - ✅ 正在监控中（绿色勾）
-   - 🔊 检测到声音（喇叭）
-   - ⏸ 已暂停音乐（暂停符号）
-   - ⏳ 等待恢复（沙漏）
-   - ⏹ 监控已暂停（停止符号）
-
-3. **控制选项**
-   - 点击菜单栏图标查看当前状态
-   - 选择 **暂停监控** 临时停止监控
-   - 选择 **继续监控** 恢复监控
-   - 选择 **退出** 关闭应用
-
-4. **工作流程**
-   - 播放网易云音乐
-   - 当其他应用（如浏览器视频、游戏等）发出声音时
-   - 应用检测到声音持续 3 秒后自动暂停网易云
-   - 其他声音停止 3 秒后自动恢复网易云播放
-
-## 🏗️ 架构设计
-
-### 核心模块
-
-1. **AudioMonitorService** - 音频监控服务
-   - 使用 ScreenCaptureKit 捕获系统音频
-   - 实时分析音频数据
-
-2. **AudioLevelDetector** - 音量检测器
-   - 计算 RMS 和 Peak 值
-   - 智能阈值算法（基于环境噪音基线）
-
-3. **NeteaseMusicController** - 网易云控制器
-   - 通过 AppleScript 控制播放状态
-   - 备用方案：键盘快捷键模拟
-
-4. **StateTransitionEngine** - 状态机引擎
-   - 协调音频检测和音乐控制
-   - 管理延迟计时器
-
-5. **DelayTimer** - 延迟计时器
-   - 精确的 3 秒延迟计时
-   - 支持取消和重置
-
-6. **MenuBarController** - 菜单栏控制器
-   - 显示状态图标
-   - 用户交互界面
-
-### 状态转换流程
-
-```
-idle → monitoring → detectingOtherSound (3秒计时)
-  → musicPaused → waitingResume (3秒计时) → monitoring
-```
-
-## 🐛 故障排除
-
-### 查看日志
-
-应用会自动将所有日志保存到文件，方便诊断问题：
-
-```bash
-# 实时查看日志
-tail -f ~/Library/Logs/StillMusicWhenBack/app.log
-
-# 打开日志目录
-open ~/Library/Logs/StillMusicWhenBack/
-
-# 搜索错误
-grep "ERROR" ~/Library/Logs/StillMusicWhenBack/app.log
-```
-
-详细说明请参考 [AUTO_LOGGING.md](AUTO_LOGGING.md)
-
-### 问题：无法检测到系统音频
-
-**解决方法**：
-1. 确保已授予 **屏幕录制** 权限
-2. 在系统设置中勾选 StillMusicWhenBack
-3. 重启应用
-4. 查看日志文件中的错误信息
-
-### 问题：无法控制网易云音乐
-
-**解决方法**：
-1. 确保网易云音乐正在运行
-2. 授予 **辅助功能** 权限
-3. 尝试手动点击网易云的播放/暂停按钮测试
-4. 检查日志中的 MusicController 模块输出
-
-### 问题：误判或延迟
-
-**解决方法**：
-1. 应用启动时会学习 10 秒环境噪音基线
-2. 确保启动时环境相对安静
-3. 如果环境噪音较大，可能需要调整阈值（未来版本将支持）
-4. 查看日志中 AudioDetector 模块的基线学习信息
-
-## 📝 开发日志
-
-- **v1.4.0** (2025-12-25)
-  - ✅ 新增自动日志文件功能
-  - ✅ 日志自动保存到 `~/Library/Logs/StillMusicWhenBack/`
-  - ✅ 支持日志文件自动轮转（10MB 轮转，保留 5 个历史文件）
-  - ✅ 所有模块集成统一日志系统
-
-- **v1.3.0** (2025-12-25)
-  - ✅ 添加详细调试日志
-  - ✅ 优化音频检测流程日志输出
-
-- **v1.2.0** (2025-12-25)
-  - ✅ 创建 .app 应用包
-  - ✅ 解决权限归属问题
-  - ✅ 添加自动权限请求轮询
-
-- **v1.1.0** (2025-12-25)
-  - ✅ 添加自动权限请求功能
-  - ✅ 优化权限检测流程
-
-- **v1.0.0** (2025-12-25)
-  - ✅ 初始版本
-  - ✅ 基础音频监控功能
-  - ✅ 网易云音乐控制
-  - ✅ 状态机实现
-  - ✅ 菜单栏界面
-  - ✅ 开机自启动支持
-
-## 🔮 未来计划
-
-- [ ] 支持更多音乐应用（Spotify、Apple Music、QQ音乐等）
-- [ ] 可配置的延迟时间
-- [ ] 可调整的检测灵敏度
-- [ ] 应用黑白名单（只监控特定应用的声音）
-- [ ] 统计功能（暂停/恢复次数）
-- [ ] 偏好设置窗口
-
-## 📄 许可证
-
-MIT License
-
-## 👨‍💻 作者
-
-YourName
-
-## 🙏 致谢
-
-- 使用了 Apple 的 ScreenCaptureKit 框架
-- 灵感来源于对更好音乐体验的追求
-
----
-
-**享受无打扰的音乐时光！🎵**
+- [media-control](https://github.com/ungive/media-control) - 用于获取系统 Now Playing 状态
