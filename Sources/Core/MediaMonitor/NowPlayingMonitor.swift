@@ -68,6 +68,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
         // 检查 media-control 是否可用
         if !checkMediaControlAvailable() {
             logError("media-control 不可用，请运行: brew install ungive/media-control/media-control", module: "NowPlaying")
+            logError("监控启动失败", module: "NowPlaying")
             return
         }
 
@@ -157,7 +158,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
             if let jsonString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                jsonString == "null" {
                 // 没有任何应用在 NowPlaying，视为没有其他应用播放
-                return NowPlayingStatus(isOtherAppPlaying: false)
+                return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
             }
 
             let decoder = JSONDecoder()
@@ -167,7 +168,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
         } catch {
             logDebug("获取 Now Playing 信息失败: \(error)", module: "NowPlaying")
             // 出错时视为没有其他应用播放
-            return NowPlayingStatus(isOtherAppPlaying: false)
+            return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
         }
     }
 
@@ -175,7 +176,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
     private func processNowPlayingInfo(_ info: NowPlayingInfo) -> NowPlayingStatus {
         guard let bundleID = info.bundleIdentifier else {
             // 没有 bundleID，视为没有应用播放
-            return NowPlayingStatus(isOtherAppPlaying: false)
+            return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
         }
 
         let isPlaying = info.playing ?? false
@@ -184,18 +185,19 @@ class NowPlayingMonitor: MediaMonitorProtocol {
         let title = info.title ?? ""
         let artist = info.artist ?? ""
 
-        // 判断是否有非网易云应用在播放
+        // 判断状态
+        let isNeteaseAsNowPlaying = isNetease
         let isOtherAppPlaying = isPlaying && !isNetease
 
-        logDebug("NowPlaying: \(bundleID) - \(title) by \(artist), playing=\(isPlaying), isNetease=\(isNetease), isOtherAppPlaying=\(isOtherAppPlaying)", module: "NowPlaying")
+        logDebug("NowPlaying: \(bundleID) - \(title) by \(artist), playing=\(isPlaying), isNetease=\(isNetease)", module: "NowPlaying")
 
-        return NowPlayingStatus(isOtherAppPlaying: isOtherAppPlaying)
+        return NowPlayingStatus(isNeteaseAsNowPlaying: isNeteaseAsNowPlaying, isOtherAppPlaying: isOtherAppPlaying)
     }
 
     /// 处理状态变化
     private func processStatus(_ status: NowPlayingStatus) {
         // 检查状态是否变化
-        if let lastStatus = lastStatus, lastStatus.isOtherAppPlaying == status.isOtherAppPlaying {
+        if let lastStatus = lastStatus, lastStatus == status {
             // 状态未变化，不触发回调
             return
         }
@@ -205,6 +207,8 @@ class NowPlayingMonitor: MediaMonitorProtocol {
 
         if status.isOtherAppPlaying {
             logInfo("检测到其他应用开始播放", module: "NowPlaying")
+        } else if status.isNeteaseAsNowPlaying {
+            logInfo("NowPlaying 切换到网易云", module: "NowPlaying")
         } else {
             logInfo("其他应用停止播放", module: "NowPlaying")
         }

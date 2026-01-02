@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ServiceManagement
+import AppKit
 
 @main
 struct StillMusicWhenBackApp: App {
@@ -29,12 +30,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
     private var permissionManager: PermissionManager?
 
+    // 权限等待期间的状态栏
+    private var statusItem: NSStatusItem?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         logInfo("应用启动...", module: "App")
         logInfo("日志文件位置: \(Logger.shared.getLogFilePath())", module: "App")
 
         // 初始化权限管理器
         permissionManager = PermissionManager()
+
+        // 立即创建状态栏图标（在等待权限期间显示）
+        setupInitialStatusItem()
 
         // 异步等待权限并初始化服务
         Task {
@@ -58,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 停止媒体监控
         mediaMonitor?.stopMonitoring()
+        stateEngine?.stop()
 
         // 清理资源
         cleanup()
@@ -66,6 +74,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Private Methods
+
+    private func setupInitialStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem?.button {
+            button.title = "🎵"
+        }
+
+        // 创建简单菜单
+        let menu = NSMenu()
+        let statusMenuItem = NSMenuItem(title: "🎵 正在初始化...", action: nil, keyEquivalent: "")
+        statusMenuItem.isEnabled = false
+        menu.addItem(statusMenuItem)
+        menu.addItem(NSMenuItem.separator())
+        let quitItem = NSMenuItem(title: "退出", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+        statusItem?.menu = menu
+    }
+
+    private func updateInitialStatusItem(icon: String, text: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.statusItem?.button?.title = icon
+            if let menu = self?.statusItem?.menu, let firstItem = menu.items.first {
+                firstItem.title = text
+            }
+        }
+    }
+
+    @objc private func quit() {
+        NSApplication.shared.terminate(nil)
+    }
 
     private func checkAccessibilityPermission() async {
         guard let permissionManager = permissionManager else { return }
@@ -77,8 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // 更新托盘图标显示等待权限状态
-        menuBarController?.updateIcon("⚠️")
-        menuBarController?.updateStatusText("⚠️ 等待辅助功能权限...")
+        updateInitialStatusItem(icon: "⚠️", text: "⚠️ 等待辅助功能权限...")
 
         // 没有权限，只请求一次
         logWarning("缺少辅助功能权限，正在请求...", module: "App")
@@ -97,7 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if attempts % 5 == 0 {
                 logDebug("权限检查第 \(attempts) 次：仍未授予", module: "App")
                 // 更新托盘状态显示等待时间
-                menuBarController?.updateStatusText("⚠️ 等待辅助功能权限... (\(attempts)秒)")
+                updateInitialStatusItem(icon: "⚠️", text: "⚠️ 等待辅助功能权限... (\(attempts)秒)")
             }
 
             // 每30秒提醒一次
@@ -110,11 +148,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         logSuccess("辅助功能权限已授予！（第 \(attempts) 次检查）", module: "App")
 
         // 恢复正常图标
-        menuBarController?.updateIcon("🎵")
-        menuBarController?.updateStatusText("🎵 辅助功能权限已授予")
+        updateInitialStatusItem(icon: "🎵", text: "🎵 辅助功能权限已授予，初始化中...")
     }
 
     private func initializeServices() {
+        // 移除初始状态栏（将由 MenuBarController 接管）
+        if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
@@ -141,7 +184,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 5. 启动 Now Playing 监控
         mediaMonitor?.startMonitoring()
-        logSuccess("Now Playing 监控已启动", module: "App")
 
         // 6. 启动状态引擎
         stateEngine?.start()
@@ -185,5 +227,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         stateEngine = nil
         menuBarController = nil
         permissionManager = nil
+        statusItem = nil
     }
 }

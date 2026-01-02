@@ -26,11 +26,15 @@ class StateTransitionEngine {
     private var wasPausedByApp = false
 
     // 缓存 NowPlaying 状态
-    private var isOtherAppPlaying = false
+    private var lastNowPlayingStatus = NowPlayingStatus.idle
 
     // 计时器（延迟执行暂停/恢复操作）
     private var pauseTimer: DelayTimer?
     private var resumeTimer: DelayTimer?
+
+    // 定时刷新网易云状态的计时器
+    private var refreshTimer: Timer?
+    private let refreshInterval: TimeInterval = 2.0  // 每2秒刷新一次
 
     // 状态变化回调
     var onStateChanged: ((AppState) -> Void)?
@@ -60,6 +64,10 @@ class StateTransitionEngine {
     /// 启动状态引擎
     func start() {
         logInfo("启动状态引擎", module: "StateEngine")
+
+        // 启动定时刷新网易云状态
+        startRefreshTimer()
+
         // 初始化状态
         updateState()
     }
@@ -69,14 +77,15 @@ class StateTransitionEngine {
         logInfo("停止状态引擎", module: "StateEngine")
         pauseTimer?.stop()
         resumeTimer?.stop()
+        stopRefreshTimer()
     }
 
     /// NowPlaying 状态变化回调
     func onNowPlayingChanged(status: NowPlayingStatus) {
-        let oldIsOtherAppPlaying = isOtherAppPlaying
-        isOtherAppPlaying = status.isOtherAppPlaying
+        let oldStatus = lastNowPlayingStatus
+        lastNowPlayingStatus = status
 
-        logDebug("NowPlaying 状态变化: isOtherAppPlaying \(oldIsOtherAppPlaying) → \(isOtherAppPlaying)", module: "StateEngine")
+        logDebug("NowPlaying 状态变化: isNeteaseAsNowPlaying \(oldStatus.isNeteaseAsNowPlaying) → \(status.isNeteaseAsNowPlaying), isOtherAppPlaying \(oldStatus.isOtherAppPlaying) → \(status.isOtherAppPlaying)", module: "StateEngine")
 
         // 更新状态
         updateState()
@@ -87,7 +96,23 @@ class StateTransitionEngine {
         return currentState
     }
 
-    // MARK: - Private Methods
+    // MARK: - Private Methods - Timer
+
+    private func startRefreshTimer() {
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
+            self?.updateState()
+        }
+        if let timer = refreshTimer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    // MARK: - Private Methods - State Machine
 
     /// 更新状态（核心状态机逻辑）
     private func updateState() {
@@ -95,12 +120,10 @@ class StateTransitionEngine {
         let isNeteasePlaying = musicController.isPlaying()
 
         // 计算新状态
-        // 注意：这里简化处理，不区分 S1/S2（NowPlaying是网易云）和 S5/S6（NowPlaying为空或其他应用暂停）
-        // 因为从用户角度看，这些状态的行为是一样的
         let newState = AppState.from(
-            isOtherAppPlaying: isOtherAppPlaying,
+            isOtherAppPlaying: lastNowPlayingStatus.isOtherAppPlaying,
             isNeteasePlaying: isNeteasePlaying,
-            isNeteaseAsNowPlaying: !isOtherAppPlaying && isNeteasePlaying  // 简化：如果没有其他应用播放且网易云在播放，视为网易云是 NowPlaying
+            isNeteaseAsNowPlaying: lastNowPlayingStatus.isNeteaseAsNowPlaying
         )
 
         // 检查状态是否变化
@@ -144,22 +167,27 @@ class StateTransitionEngine {
                 resumeTimer?.start()
             }
 
-        // 从 S3 转到 S5：其他应用停止播放，但网易云还在播放
-        // 说明用户可能手动恢复了网易云，清除软件暂停标记
-        case (.s3_otherPlayingNeteasePlaying, .s5_otherIdleNeteasePlaying):
-            wasPausedByApp = false
+        // 从 S4 转到 S2：其他应用停止，NowPlaying 切回网易云但暂停
+        // 如果是软件暂停的，需要启动恢复计时器
+        case (.s4_otherPlayingNeteasePaused, .s2_neteasePausedAsNowPlaying):
+            if wasPausedByApp {
+                logInfo("NowPlaying 切回网易云，启动恢复计时器...", module: "StateEngine")
+                resumeTimer?.start()
+            }
 
-        // 网易云被用户手动暂停（从播放状态变为暂停）
+        // 网易云被用户手动暂停（非冲突状态下从播放变为暂停）
         case (.s5_otherIdleNeteasePlaying, .s6_otherIdleNeteasePaused),
              (.s1_neteasePlayingAsNowPlaying, .s2_neteasePausedAsNowPlaying):
             // 用户手动暂停，清除软件暂停标记
             wasPausedByApp = false
+            logDebug("用户手动暂停网易云", module: "StateEngine")
 
-        // 网易云被用户手动恢复（从暂停状态变为播放）
+        // 网易云被用户手动恢复（非冲突状态下从暂停变为播放）
         case (.s6_otherIdleNeteasePaused, .s5_otherIdleNeteasePlaying),
              (.s2_neteasePausedAsNowPlaying, .s1_neteasePlayingAsNowPlaying):
             // 用户手动恢复，清除软件暂停标记
             wasPausedByApp = false
+            logDebug("用户手动恢复网易云", module: "StateEngine")
 
         default:
             break
@@ -192,7 +220,7 @@ class StateTransitionEngine {
         }
 
         // 检查其他应用是否仍在播放
-        guard !isOtherAppPlaying else {
+        guard !lastNowPlayingStatus.isOtherAppPlaying else {
             logInfo("其他应用仍在播放，跳过恢复", module: "StateEngine")
             return
         }

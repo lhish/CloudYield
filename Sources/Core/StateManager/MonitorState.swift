@@ -14,10 +14,11 @@ import Foundation
 // MARK: - NowPlaying 状态结构
 
 /// NowPlaying 返回的状态信息
-struct NowPlayingStatus {
-    let isOtherAppPlaying: Bool  // 是否有非网易云应用正在播放
+struct NowPlayingStatus: Equatable {
+    let isNeteaseAsNowPlaying: Bool  // NowPlaying 是否为网易云
+    let isOtherAppPlaying: Bool      // 是否有非网易云应用正在播放
 
-    static let idle = NowPlayingStatus(isOtherAppPlaying: false)
+    static let idle = NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
 }
 
 // MARK: - 应用状态枚举
