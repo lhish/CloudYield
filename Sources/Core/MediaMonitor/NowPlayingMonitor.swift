@@ -158,7 +158,12 @@ class NowPlayingMonitor: MediaMonitorProtocol {
             if let jsonString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                jsonString == "null" {
                 // 没有任何应用在 NowPlaying，视为没有其他应用播放
-                return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
+                return NowPlayingStatus(
+                    isNeteaseAsNowPlaying: false,
+                    isOtherAppPlaying: false,
+                    currentBundleID: nil,
+                    isCurrentlyPlaying: false
+                )
             }
 
             let decoder = JSONDecoder()
@@ -168,7 +173,12 @@ class NowPlayingMonitor: MediaMonitorProtocol {
         } catch {
             logDebug("获取 Now Playing 信息失败: \(error)", module: "NowPlaying")
             // 出错时视为没有其他应用播放
-            return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
+            return NowPlayingStatus(
+                isNeteaseAsNowPlaying: false,
+                isOtherAppPlaying: false,
+                currentBundleID: nil,
+                isCurrentlyPlaying: false
+            )
         }
     }
 
@@ -176,7 +186,12 @@ class NowPlayingMonitor: MediaMonitorProtocol {
     private func processNowPlayingInfo(_ info: NowPlayingInfo) -> NowPlayingStatus {
         guard let bundleID = info.bundleIdentifier else {
             // 没有 bundleID，视为没有应用播放
-            return NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
+            return NowPlayingStatus(
+                isNeteaseAsNowPlaying: false,
+                isOtherAppPlaying: false,
+                currentBundleID: nil,
+                isCurrentlyPlaying: false
+            )
         }
 
         let isPlaying = info.playing ?? false
@@ -191,7 +206,12 @@ class NowPlayingMonitor: MediaMonitorProtocol {
 
         logDebug("NowPlaying: \(bundleID) - \(title) by \(artist), playing=\(isPlaying), isNetease=\(isNetease)", module: "NowPlaying")
 
-        return NowPlayingStatus(isNeteaseAsNowPlaying: isNeteaseAsNowPlaying, isOtherAppPlaying: isOtherAppPlaying)
+        return NowPlayingStatus(
+            isNeteaseAsNowPlaying: isNeteaseAsNowPlaying,
+            isOtherAppPlaying: isOtherAppPlaying,
+            currentBundleID: bundleID,
+            isCurrentlyPlaying: isPlaying
+        )
     }
 
     /// 处理状态变化

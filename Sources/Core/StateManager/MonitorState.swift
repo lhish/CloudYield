@@ -17,8 +17,15 @@ import Foundation
 struct NowPlayingStatus: Equatable {
     let isNeteaseAsNowPlaying: Bool  // NowPlaying 是否为网易云
     let isOtherAppPlaying: Bool      // 是否有非网易云应用正在播放
+    let currentBundleID: String?     // 当前 NowPlaying 应用的 bundleID
+    let isCurrentlyPlaying: Bool     // 当前 NowPlaying 应用是否正在播放
 
-    static let idle = NowPlayingStatus(isNeteaseAsNowPlaying: false, isOtherAppPlaying: false)
+    static let idle = NowPlayingStatus(
+        isNeteaseAsNowPlaying: false,
+        isOtherAppPlaying: false,
+        currentBundleID: nil,
+        isCurrentlyPlaying: false
+    )
 }
 
 // MARK: - 应用状态枚举

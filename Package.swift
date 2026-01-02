@@ -15,7 +15,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CloudYield",
-            path: "Sources"
+            path: "Sources",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-F", "/System/Library/PrivateFrameworks",
+                    "-framework", "MediaRemote"
+                ])
+            ]
         )
     ]
 )

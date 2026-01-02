@@ -25,6 +25,9 @@ class StateTransitionEngine {
     // 记录是否是软件暂停的网易云（用于自动恢复）
     private var wasPausedByApp = false
 
+    // 记录导致暂停的应用 bundleID（用于刷新 NowPlaying）
+    private var lastPausingAppBundleID: String?
+
     // 缓存 NowPlaying 状态
     private var lastNowPlayingStatus = NowPlayingStatus.idle
 
@@ -179,6 +182,10 @@ class StateTransitionEngine {
             return
         }
 
+        // 记录导致暂停的应用 bundleID
+        lastPausingAppBundleID = lastNowPlayingStatus.currentBundleID
+        logDebug("记录导致暂停的应用: \(lastPausingAppBundleID ?? "nil")", module: "StateEngine")
+
         musicController.pause()
         wasPausedByApp = true
 
@@ -202,12 +209,59 @@ class StateTransitionEngine {
             return
         }
 
+        // 记录之前导致暂停的应用（用于后续刷新检测）
+        let pausingApp = lastPausingAppBundleID
+
         musicController.play()
         wasPausedByApp = false
+
+        // 恢复后触发 NowPlaying 刷新，检测之前的应用是否仍在播放
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.triggerNowPlayingRefreshIfNeeded(pausingApp: pausingApp)
+        }
 
         // 更新状态
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.updateState()
         }
+    }
+
+    /// 触发 NowPlaying 刷新（如果需要）
+    /// 当网易云恢复播放后，检查当前前台应用是否是之前导致暂停的应用
+    /// 如果是，触发 NowPlaying 刷新到该应用，让系统重新评估 NowPlaying
+    private func triggerNowPlayingRefreshIfNeeded(pausingApp: String?) {
+        // 获取当前前台应用
+        guard let frontApp = MediaRemoteBridge.getFrontmostAppBundleID() else {
+            logDebug("无法获取前台应用 bundleID", module: "StateEngine")
+            return
+        }
+
+        logDebug("当前前台应用: \(frontApp), 之前暂停源: \(pausingApp ?? "nil")", module: "StateEngine")
+
+        // 如果前台应用是之前导致暂停的应用，或者前台应用不是网易云，都触发刷新
+        // 这样可以让系统重新评估哪个应用应该是 NowPlaying
+        let isNetease = isNeteaseMusicApp(frontApp)
+        if !isNetease {
+            logInfo("触发 NowPlaying 刷新到前台应用: \(frontApp)", module: "StateEngine")
+            MediaRemoteBridge.triggerNowPlayingRefresh(toBundleID: frontApp)
+
+            // 刷新后延迟检查状态
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.updateState()
+            }
+        }
+    }
+
+    /// 判断是否为网易云音乐应用
+    private func isNeteaseMusicApp(_ bundleID: String) -> Bool {
+        let neteaseBundleIDs = [
+            "com.netease.163music",
+            "com.netease.Music",
+            "com.netease.CloudMusic"
+        ]
+
+        return neteaseBundleIDs.contains(bundleID) ||
+               bundleID.lowercased().contains("netease") ||
+               bundleID.lowercased().contains("163music")
     }
 }
