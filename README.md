@@ -90,7 +90,7 @@ swift build -c release
 
 ## 许可证
 
-[MIT License](LICENSE)
+[GPL-3.0 License](LICENSE)
 
 ## 致谢
 
