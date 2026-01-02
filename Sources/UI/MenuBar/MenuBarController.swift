@@ -33,7 +33,9 @@ class MenuBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         // 设置初始图标
-        updateIcon(for: .monitoring)
+        if let button = statusItem?.button {
+            button.title = "🎵"
+        }
 
         // 创建菜单
         createMenu()
@@ -52,18 +54,6 @@ class MenuBarController: NSObject {
         if let item = statusMenuItem {
             menu?.addItem(item)
         }
-
-        menu?.addItem(NSMenuItem.separator())
-
-        // 暂停/继续监控
-        let pauseItem = NSMenuItem(
-            title: "暂停监控",
-            action: #selector(toggleMonitoring),
-            keyEquivalent: "p"
-        )
-        pauseItem.target = self
-        pauseItem.tag = 100 // 用于后续更新标题
-        menu?.addItem(pauseItem)
 
         menu?.addItem(NSMenuItem.separator())
 
@@ -108,38 +98,19 @@ class MenuBarController: NSObject {
         }
     }
 
-    private func updateUI(for state: MonitorState) {
+    private func updateUI(for state: AppState) {
         DispatchQueue.main.async { [weak self] in
             self?.updateIcon(for: state)
             self?.updateStatusText(for: state)
-            self?.updatePauseMenuItem(for: state)
         }
     }
 
-    private func updateIcon(for state: MonitorState) {
+    private func updateIcon(for state: AppState) {
         guard let button = statusItem?.button else { return }
-
-        // 根据状态设置不同的图标/符号
-        let icon: String
-        switch state {
-        case .idle:
-            icon = "🎵"
-        case .monitoring:
-            icon = "✅"
-        case .detectingOtherSound:
-            icon = "🔊"
-        case .musicPaused:
-            icon = "⏸"
-        case .waitingResume:
-            icon = "⏳"
-        case .paused:
-            icon = "⏹"
-        }
-
-        button.title = icon
+        button.title = state.icon
     }
 
-    private func updateStatusText(for state: MonitorState) {
+    private func updateStatusText(for state: AppState) {
         guard let statusMenuItem = statusMenuItem else { return }
         statusMenuItem.title = "\(state.icon) \(state.description)"
     }
@@ -158,29 +129,7 @@ class MenuBarController: NSObject {
         }
     }
 
-    private func updatePauseMenuItem(for state: MonitorState) {
-        guard let menu = menu,
-              let pauseMenuItem = menu.item(withTag: 100) else { return }
-
-        switch state {
-        case .paused:
-            pauseMenuItem.title = "继续监控"
-        default:
-            pauseMenuItem.title = "暂停监控"
-        }
-    }
-
     // MARK: - Actions
-
-    @objc private func toggleMonitoring() {
-        let currentState = stateEngine.getCurrentState()
-
-        if currentState == .paused {
-            stateEngine.resumeMonitoring()
-        } else {
-            stateEngine.pauseMonitoring()
-        }
-    }
 
     @objc private func openLogDirectory() {
         Logger.shared.openLogDirectory()
@@ -193,16 +142,14 @@ class MenuBarController: NSObject {
         版本: 1.0.0
 
         功能：
-        • 监控系统音频输出
-        • 检测到其他声音时自动暂停网易云音乐
-        • 声音停止后自动恢复播放
+        • 监控系统 Now Playing 状态
+        • 检测到其他应用播放时自动暂停网易云音乐
+        • 其他应用停止后自动恢复播放
 
         使用方法：
-        1. 确保已授予屏幕录制权限
+        1. 确保已授予辅助功能权限
         2. 播放网易云音乐
         3. 应用会在后台自动工作
-
-        开发者: YourName
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好的")
@@ -214,7 +161,7 @@ class MenuBarController: NSObject {
 
         let alert = NSAlert()
         alert.messageText = "确认退出？"
-        alert.informativeText = "退出后将停止监控系统音频"
+        alert.informativeText = "退出后将停止监控"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "退出")
         alert.addButton(withTitle: "取消")

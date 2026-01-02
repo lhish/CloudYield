@@ -3,7 +3,7 @@
 //  StillMusicWhenBack
 //
 //  使用 media-control CLI 工具获取系统 "正在播放" 信息
-//  检测其他应用是否在播放音频
+//  判断是否有非网易云应用在播放
 //
 //  注意：macOS 15.4+ 限制了 MediaRemote API 的直接访问
 //  需要使用 media-control (brew install ungive/media-control/media-control) 来获取信息
@@ -29,16 +29,10 @@ private struct NowPlayingInfo: Codable {
 class NowPlayingMonitor: MediaMonitorProtocol {
     // MARK: - Properties
 
-    var onOtherAppPlayingChanged: ((Bool) -> Void)?
+    var onNowPlayingChanged: ((NowPlayingStatus) -> Void)?
 
     private var isMonitoring = false
-    private var lastAppBundleID: String?
-    private var lastIsPlaying = false
-    private var isOtherAppPlaying = false
-
-    // 用于检测播放是否停止
-    private var stoppedSince: Date?
-    private let stoppedThreshold: TimeInterval = 3.0  // 3秒不变化视为停止
+    private var lastStatus: NowPlayingStatus?
 
     // 轮询定时器
     private var pollTimer: Timer?
@@ -105,10 +99,7 @@ class NowPlayingMonitor: MediaMonitorProtocol {
 
         // 重置状态
         isMonitoring = false
-        lastAppBundleID = nil
-        lastIsPlaying = false
-        stoppedSince = nil
-        isOtherAppPlaying = false
+        lastStatus = nil
 
         logSuccess("Now Playing 监控已停止", module: "NowPlaying")
     }
@@ -136,16 +127,18 @@ class NowPlayingMonitor: MediaMonitorProtocol {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            let info = self.fetchNowPlayingInfo()
+            let status = self.fetchNowPlayingStatus()
 
             // 回到主线程处理结果
             DispatchQueue.main.async {
-                self.processNowPlayingInfo(info)
+                self.processStatus(status)
             }
         }
     }
 
-    private func fetchNowPlayingInfo() -> NowPlayingInfo? {
+    /// 获取 NowPlaying 状态
+    /// - Returns: NowPlayingStatus，表示是否有非网易云应用在播放
+    private func fetchNowPlayingStatus() -> NowPlayingStatus {
         let process = Process()
         let pipe = Pipe()
 
@@ -160,96 +153,63 @@ class NowPlayingMonitor: MediaMonitorProtocol {
 
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
 
-            // 检查是否返回 null
+            // 检查是否返回 null（没有任何 NowPlaying）
             if let jsonString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                jsonString == "null" {
-                return nil
+                // 没有任何应用在 NowPlaying，视为没有其他应用播放
+                return NowPlayingStatus(isOtherAppPlaying: false)
             }
 
             let decoder = JSONDecoder()
-            return try decoder.decode(NowPlayingInfo.self, from: data)
+            let info = try decoder.decode(NowPlayingInfo.self, from: data)
+
+            return processNowPlayingInfo(info)
         } catch {
             logDebug("获取 Now Playing 信息失败: \(error)", module: "NowPlaying")
-            return nil
+            // 出错时视为没有其他应用播放
+            return NowPlayingStatus(isOtherAppPlaying: false)
         }
     }
 
-    private func processNowPlayingInfo(_ info: NowPlayingInfo?) {
-        let now = Date()
-
-        guard let info = info, let bundleID = info.bundleIdentifier else {
-            // 没有 Now Playing 信息
-            handleNoNowPlayingInfo()
-            return
+    /// 处理 NowPlaying 信息，判断是否有非网易云应用在播放
+    private func processNowPlayingInfo(_ info: NowPlayingInfo) -> NowPlayingStatus {
+        guard let bundleID = info.bundleIdentifier else {
+            // 没有 bundleID，视为没有应用播放
+            return NowPlayingStatus(isOtherAppPlaying: false)
         }
 
         let isPlaying = info.playing ?? false
+        let isNetease = isNeteaseMusicApp(bundleID)
+
         let title = info.title ?? ""
         let artist = info.artist ?? ""
 
-        // 判断当前是否为网易云音乐
-        let isNetease = isNeteaseMusicApp(bundleID)
+        // 判断是否有非网易云应用在播放
+        let isOtherAppPlaying = isPlaying && !isNetease
 
-        logInfo("Now Playing: \(bundleID) - \(title) by \(artist), playing=\(isPlaying)", module: "NowPlaying")
+        logDebug("NowPlaying: \(bundleID) - \(title) by \(artist), playing=\(isPlaying), isNetease=\(isNetease), isOtherAppPlaying=\(isOtherAppPlaying)", module: "NowPlaying")
 
-        // 情况1: 检测到其他应用正在播放
-        if isPlaying && !isNetease {
-            if !isOtherAppPlaying {
-                logInfo("检测到其他应用开始播放: \(bundleID)", module: "NowPlaying")
-                setOtherAppPlaying(true)
-            }
-            stoppedSince = nil
-        }
-        // 情况2: 其他应用停止播放或切换回网易云
-        else if isOtherAppPlaying {
-            if isNetease && isPlaying {
-                logInfo("播放切换回网易云", module: "NowPlaying")
-                setOtherAppPlaying(false)
-                stoppedSince = nil
-            } else if !isPlaying || isNetease {
-                // 其他应用停止播放，开始计时
-                if stoppedSince == nil {
-                    stoppedSince = now
-                    logInfo("其他应用停止播放，开始计时...", module: "NowPlaying")
-                } else if now.timeIntervalSince(stoppedSince!) >= stoppedThreshold {
-                    logInfo("其他应用已停止播放超过 \(stoppedThreshold) 秒", module: "NowPlaying")
-                    setOtherAppPlaying(false)
-                    stoppedSince = nil
-                }
-            }
-        }
-
-        // 更新状态
-        lastAppBundleID = bundleID
-        lastIsPlaying = isPlaying
+        return NowPlayingStatus(isOtherAppPlaying: isOtherAppPlaying)
     }
 
-    private func handleNoNowPlayingInfo() {
-        // 如果之前有其他应用在播放，现在没有 Now Playing 信息了
-        if isOtherAppPlaying {
-            if stoppedSince == nil {
-                stoppedSince = Date()
-                logInfo("Now Playing 信息消失，开始计时...", module: "NowPlaying")
-            } else if Date().timeIntervalSince(stoppedSince!) >= stoppedThreshold {
-                logInfo("Now Playing 信息消失超过 \(stoppedThreshold) 秒", module: "NowPlaying")
-                setOtherAppPlaying(false)
-                stoppedSince = nil
-            }
+    /// 处理状态变化
+    private func processStatus(_ status: NowPlayingStatus) {
+        // 检查状态是否变化
+        if let lastStatus = lastStatus, lastStatus.isOtherAppPlaying == status.isOtherAppPlaying {
+            // 状态未变化，不触发回调
+            return
         }
 
-        lastAppBundleID = nil
-        lastIsPlaying = false
-    }
+        // 状态变化，更新并触发回调
+        lastStatus = status
 
-    private func setOtherAppPlaying(_ playing: Bool) {
-        guard playing != isOtherAppPlaying else { return }
-
-        isOtherAppPlaying = playing
-        logInfo("状态变化: isOtherAppPlaying = \(playing)", module: "NowPlaying")
-
-        DispatchQueue.main.async { [weak self] in
-            self?.onOtherAppPlayingChanged?(playing)
+        if status.isOtherAppPlaying {
+            logInfo("检测到其他应用开始播放", module: "NowPlaying")
+        } else {
+            logInfo("其他应用停止播放", module: "NowPlaying")
         }
+
+        onNowPlayingChanged?(status)
     }
 
     /// 判断是否为网易云音乐应用

@@ -38,11 +38,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 异步等待权限并初始化服务
         Task {
-            // Now Playing 监控不需要屏幕录制权限，只需要辅助功能权限
-            // 1. 等待辅助功能权限
+            // 等待辅助功能权限（用于 AppleScript 控制网易云）
             await checkAccessibilityPermission()
 
-            // 2. 权限授予后，初始化核心服务
+            // 权限授予后，初始化核心服务
             await MainActor.run {
                 initializeServices()
             }
@@ -67,47 +66,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Private Methods
-
-    private func checkScreenRecordingPermission() async {
-        guard let permissionManager = permissionManager else { return }
-
-        // 先检查一次，如果已有权限就不请求
-        if permissionManager.hasScreenRecordingPermission() {
-            logSuccess("已有屏幕录制权限", module: "App")
-            return
-        }
-
-        // 没有权限，主动请求
-        logWarning("缺少屏幕录制权限，正在请求...", module: "App")
-        permissionManager.requestScreenRecordingPermission()
-
-        // 等待用户授权
-        logInfo("等待用户授予屏幕录制权限...", module: "App")
-        logInfo("请在系统设置中勾选 StillMusicWhenBack", module: "App")
-
-        var attempts = 0
-        while !permissionManager.hasScreenRecordingPermission() {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒
-            attempts += 1
-
-            // 每5次检查输出一次日志
-            if attempts % 5 == 0 {
-                logDebug("屏幕录制权限检查第 \(attempts) 次：仍未授予", module: "App")
-            }
-
-            // 每30秒提醒一次
-            if attempts % 30 == 0 {
-                logWarning("已等待 \(attempts) 秒，仍未检测到屏幕录制权限", module: "App")
-                logInfo("路径: 系统设置 → 隐私与安全性 → 屏幕录制", module: "App")
-            }
-        }
-
-        logSuccess("屏幕录制权限已授予！（第 \(attempts) 次检查）", module: "App")
-
-        // 等待权限完全生效（避免后续操作触发权限对话框）
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2秒
-        logDebug("权限生效等待完成", module: "App")
-    }
 
     private func checkAccessibilityPermission() async {
         guard let permissionManager = permissionManager else { return }
@@ -152,34 +110,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         logSuccess("辅助功能权限已授予！（第 \(attempts) 次检查）", module: "App")
 
         // 恢复正常图标
-        menuBarController?.updateIcon("✅")
-        menuBarController?.updateStatusText("✅ 辅助功能权限已授予")
-    }
-
-    private func showPermissionAlert() async {
-        await MainActor.run {
-            let alert = NSAlert()
-            alert.messageText = "需要屏幕录制权限"
-            alert.informativeText = "为了监控系统音频，需要授予屏幕录制权限。\n\n请前往：系统设置 → 隐私与安全性 → 屏幕录制，然后勾选 StillMusicWhenBack"
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "打开系统设置")
-            alert.addButton(withTitle: "稍后")
-
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                // 打开系统设置
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-        }
+        menuBarController?.updateIcon("🎵")
+        menuBarController?.updateStatusText("🎵 辅助功能权限已授予")
     }
 
     private func initializeServices() {
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
-        // 2. 初始化 Now Playing 监控服务（无需屏幕录制权限，无录屏角标）
+        // 2. 初始化 Now Playing 监控服务
         mediaMonitor = NowPlayingMonitor()
 
         // 3. 初始化状态引擎
@@ -189,9 +128,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 mediaMonitor: mediaMonitor
             )
 
-            // 设置回调
-            mediaMonitor.onOtherAppPlayingChanged = { [weak self] isPlaying in
-                self?.stateEngine?.onOtherAppPlayingChanged(isPlaying: isPlaying)
+            // 设置回调：NowPlaying 状态变化 → 状态引擎
+            mediaMonitor.onNowPlayingChanged = { [weak self] status in
+                self?.stateEngine?.onNowPlayingChanged(status: status)
             }
         }
 
@@ -202,7 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 5. 启动 Now Playing 监控
         mediaMonitor?.startMonitoring()
-        logSuccess("Now Playing 监控已启动（无录屏角标）", module: "App")
+        logSuccess("Now Playing 监控已启动", module: "App")
 
         // 6. 启动状态引擎
         stateEngine?.start()

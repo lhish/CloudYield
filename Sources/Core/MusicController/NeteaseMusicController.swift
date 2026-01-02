@@ -2,7 +2,7 @@
 //  NeteaseMusicController.swift
 //  StillMusicWhenBack
 //
-//  网易云音乐控制器 - 通过 AppleScript 控制播放/暂停
+//  网易云音乐控制器 - 通过 AppleScript 控制播放/暂停和检测状态
 //
 
 import Foundation
@@ -16,32 +16,6 @@ class NeteaseMusicController {
     private let playMenuItemName = "播放"
     private let pauseMenuItemName = "暂停"
 
-    // 缓存上一次的播放状态
-    private var lastKnownState: PlaybackState = .unknown
-
-    // media-control 路径
-    private let mediaControlPath: String
-
-    enum PlaybackState {
-        case playing
-        case paused
-        case stopped
-        case unknown
-    }
-
-    // MARK: - Initialization
-
-    init() {
-        // 查找 media-control 路径
-        if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/media-control") {
-            mediaControlPath = "/opt/homebrew/bin/media-control"
-        } else if FileManager.default.fileExists(atPath: "/usr/local/bin/media-control") {
-            mediaControlPath = "/usr/local/bin/media-control"
-        } else {
-            mediaControlPath = "media-control"
-        }
-    }
-
     // MARK: - Public Methods
 
     /// 检查网易云音乐是否正在运行
@@ -50,11 +24,38 @@ class NeteaseMusicController {
         return runningApps.contains { $0.localizedName == processName || $0.bundleIdentifier?.contains("netease") == true }
     }
 
-    /// 检查网易云音乐是否正在播放
+    /// 检查网易云音乐是否正在播放（通过 AppleScript 检测菜单项）
     func isPlaying() -> Bool {
-        let state = getPlaybackState()
-        lastKnownState = state
-        return state == .playing
+        guard isRunning() else {
+            return false
+        }
+
+        // 通过检查菜单项来判断状态
+        let script = """
+        tell application "System Events"
+            tell process "\(processName)"
+                try
+                    set menuItemName to name of menu item 1 of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
+                    return menuItemName
+                on error
+                    return "error"
+                end try
+            end tell
+        end tell
+        """
+
+        let result = executeAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if result == pauseMenuItemName {
+            // 如果菜单显示"暂停"，说明正在播放
+            return true
+        } else if result == playMenuItemName {
+            // 如果菜单显示"播放"，说明当前是暂停状态
+            return false
+        } else {
+            logWarning("AppleScript 无法获取播放状态: \(result)", module: "MusicController")
+            return false
+        }
     }
 
     /// 暂停播放
@@ -66,7 +67,6 @@ class NeteaseMusicController {
 
         logInfo("暂停播放...", module: "MusicController")
 
-        // 方案1: 通过 AppleScript 点击菜单项
         let script = """
         tell application "System Events"
             tell process "\(processName)"
@@ -84,11 +84,8 @@ class NeteaseMusicController {
 
         if result.contains("success") {
             logSuccess("已暂停", module: "MusicController")
-            lastKnownState = .paused
         } else {
-            logWarning("暂停失败，尝试备用方案...", module: "MusicController")
-            // 备用方案：使用键盘快捷键
-            pauseByKeyboard()
+            logWarning("暂停失败: \(result)", module: "MusicController")
         }
     }
 
@@ -118,122 +115,12 @@ class NeteaseMusicController {
 
         if result.contains("success") {
             logSuccess("已恢复播放", module: "MusicController")
-            lastKnownState = .playing
         } else {
-            logWarning("恢复失败，尝试备用方案...", module: "MusicController")
-            // 备用方案：使用键盘快捷键
-            playByKeyboard()
+            logWarning("恢复失败: \(result)", module: "MusicController")
         }
-    }
-
-    /// 获取上一次已知的播放状态
-    func getLastKnownState() -> PlaybackState {
-        return lastKnownState
     }
 
     // MARK: - Private Methods
-
-    /// 获取当前播放状态（优先使用 media-control，失败时用 AppleScript）
-    private func getPlaybackState() -> PlaybackState {
-        guard isRunning() else {
-            return .stopped
-        }
-
-        // 方案1: 使用 media-control 获取 Now Playing 信息
-        if let state = getPlaybackStateFromMediaControl() {
-            return state
-        }
-
-        // 方案2: 备用 AppleScript 方案
-        return getPlaybackStateFromAppleScript()
-    }
-
-    /// 使用 media-control 获取播放状态
-    private func getPlaybackStateFromMediaControl() -> PlaybackState? {
-        let process = Process()
-        let pipe = Pipe()
-
-        process.executableURL = URL(fileURLWithPath: mediaControlPath)
-        process.arguments = ["get"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-
-            // 检查是否返回 null
-            if let jsonString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               jsonString == "null" {
-                return nil
-            }
-
-            // 解析 JSON
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let bundleID = json["bundleIdentifier"] as? String ?? ""
-                let isPlaying = json["playing"] as? Bool ?? false
-
-                // 检查是否是网易云音乐
-                if isNeteaseMusicApp(bundleID) {
-                    logDebug("media-control 检测: 网易云 playing=\(isPlaying)", module: "MusicController")
-                    return isPlaying ? .playing : .paused
-                } else {
-                    // Now Playing 不是网易云，说明网易云不在播放
-                    logDebug("media-control 检测: Now Playing 是其他应用 (\(bundleID))", module: "MusicController")
-                    return .paused
-                }
-            }
-        } catch {
-            logDebug("media-control 获取失败: \(error)", module: "MusicController")
-        }
-
-        return nil
-    }
-
-    /// 使用 AppleScript 获取播放状态（备用方案）
-    private func getPlaybackStateFromAppleScript() -> PlaybackState {
-        // 通过检查菜单项来判断状态
-        let script = """
-        tell application "System Events"
-            tell process "\(processName)"
-                try
-                    set menuItemName to name of menu item 1 of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
-                    return menuItemName
-                on error
-                    return "error"
-                end try
-            end tell
-        end tell
-        """
-
-        let result = executeAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if result == pauseMenuItemName {
-            // 如果菜单显示"暂停"，说明正在播放
-            return .playing
-        } else if result == playMenuItemName {
-            // 如果菜单显示"播放"，说明当前是暂停状态
-            return .paused
-        } else {
-            logWarning("AppleScript 无法获取播放状态: \(result)", module: "MusicController")
-            return .unknown
-        }
-    }
-
-    /// 判断是否为网易云音乐应用
-    private func isNeteaseMusicApp(_ bundleID: String) -> Bool {
-        let neteaseBundleIDs = [
-            "com.netease.163music",
-            "com.netease.Music",
-            "com.netease.CloudMusic"
-        ]
-
-        return neteaseBundleIDs.contains(bundleID) ||
-               bundleID.lowercased().contains("netease") ||
-               bundleID.lowercased().contains("163music")
-    }
 
     /// 执行 AppleScript
     private func executeAppleScript(_ script: String) -> String {
@@ -247,46 +134,5 @@ class NeteaseMusicController {
         }
 
         return output?.stringValue ?? ""
-    }
-
-    // MARK: - 备用方案：键盘快捷键
-
-    /// 通过键盘快捷键暂停/播放（备用方案）
-    private func pauseByKeyboard() {
-        // 网易云音乐的播放/暂停快捷键通常是空格键
-        // 需要先激活网易云窗口
-        activateNeteaseMusic()
-
-        // 等待一小段时间让窗口激活
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.simulateSpaceKey()
-        }
-    }
-
-    private func playByKeyboard() {
-        pauseByKeyboard() // 播放和暂停使用同一个快捷键
-    }
-
-    private func activateNeteaseMusic() {
-        let script = """
-        tell application "\(processName)"
-            activate
-        end tell
-        """
-        _ = executeAppleScript(script)
-    }
-
-    private func simulateSpaceKey() {
-        // 创建空格键按下事件
-        let source = CGEventSource(stateID: .hidSystemState)
-
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x31, keyDown: true) // 0x31 = 空格键
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x31, keyDown: false)
-
-        // 发送事件
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
-
-        logInfo("已发送空格键事件", module: "MusicController")
     }
 }
