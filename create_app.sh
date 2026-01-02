@@ -56,7 +56,7 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <key>CFBundleExecutable</key>
     <string>StillMusicWhenBack</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourdomain.stillmusicwhenback</string>
+    <string>com.lhish.stillmusicwhenback</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -71,18 +71,10 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>需要访问音频以监控系统声音</string>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>需要屏幕录制权限以监控其他应用的音频播放状态，从而智能控制网易云音乐。本应用不会录制屏幕内容，仅用于检测音频播放。</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>需要控制网易云音乐的播放状态</string>
-    <key>NSSupportsAutomaticTermination</key>
-    <false/>
-    <key>NSSupportsSuddenTermination</key>
-    <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>需要控制网易云音乐的播放状态</string>
 </dict>
 </plist>
 EOF
@@ -104,7 +96,7 @@ cat > "$CONTENTS_DIR/Entitlements.plist" << 'ENTITLEMENTS'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.device.audio-input</key>
+    <key>com.apple.security.automation.apple-events</key>
     <true/>
 </dict>
 </plist>
@@ -122,7 +114,7 @@ codesign --remove-signature "$APP_DIR" 2>/dev/null || true
 # 使用 ad-hoc 签名但保持 identifier 一致，并启用 Hardened Runtime
 # 关键：使用 --preserve-metadata 来保持元数据一致性
 codesign --force --deep --sign - \
-    --identifier "com.yourdomain.stillmusicwhenback" \
+    --identifier "com.lhish.stillmusicwhenback" \
     --entitlements "$CONTENTS_DIR/Entitlements.plist" \
     --options runtime \
     --timestamp=none \
