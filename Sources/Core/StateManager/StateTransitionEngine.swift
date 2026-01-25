@@ -2,7 +2,7 @@
 //  StateTransitionEngine.swift
 //  StillMusicWhenBack
 //
-//  状态转换引擎 - 基于6状态模型协调音频检测和音乐控制
+//  状态转换引擎 - 基于音频检测 + 网易云控制
 //
 //  状态模型：
 //  - otherPlayingNeteasePlaying: 其他应用出声 + 网易云播放（冲突，需自动暂停）

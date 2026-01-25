@@ -5,7 +5,7 @@
 //  媒体监控协议 - 监控“是否有其他应用出声”状态变化
 //
 
-protocol MediaMonitorProtocol {
+protocol MediaMonitorProtocol: AnyObject {
     /// 开始监控
     func startMonitoring()
 

@@ -15,7 +15,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CloudYield",
-            path: "Sources"
+            path: "Sources",
+            exclude: [
+                "Resources/Info.plist"
+            ]
         )
     ]
 )
