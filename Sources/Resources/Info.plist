@@ -19,12 +19,14 @@
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
+    <string>14.2</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>需要控制网易云音乐的播放状态</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>用于检测其他应用是否正在出声，以自动暂停/恢复网易云音乐</string>
 </dict>
 </plist>

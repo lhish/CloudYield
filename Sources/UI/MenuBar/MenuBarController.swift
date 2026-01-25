@@ -81,6 +81,15 @@ class MenuBarController: NSObject {
         logItem.target = self
         menu?.addItem(logItem)
 
+        // 打开音频捕获权限（Process Tap）
+        let audioCaptureItem = NSMenuItem(
+            title: "打开音频捕获权限",
+            action: #selector(openAudioCaptureSettings),
+            keyEquivalent: ""
+        )
+        audioCaptureItem.target = self
+        menu?.addItem(audioCaptureItem)
+
         menu?.addItem(NSMenuItem.separator())
 
         // 关于
@@ -156,6 +165,12 @@ class MenuBarController: NSObject {
         Logger.shared.openLogDirectory()
     }
 
+    @objc private func openAudioCaptureSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc private func showAbout() {
         let alert = NSAlert()
         alert.messageText = "CloudYield"
@@ -172,11 +187,12 @@ class MenuBarController: NSObject {
         • 响应速度 0.1 秒，几乎无感知
 
         工作原理：
-        • 使用 media-control 监控系统 Now Playing 状态
+        • macOS 14.2+: 使用 Process Tap 检测其他应用出声
         • 使用 AppleScript 控制网易云音乐播放/暂停
 
-        依赖：
-        • brew install ungive/media-control/media-control
+        权限：
+        • 辅助功能（控制网易云）
+        • 音频捕获（检测其他应用出声）
 
         许可证: GPL-3.0 License
         """

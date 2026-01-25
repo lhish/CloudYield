@@ -24,7 +24,7 @@ struct CloudYieldApp: App {
 // MARK: - App Delegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     // 核心服务
-    private var mediaMonitor: NowPlayingMonitor?
+    private var mediaMonitor: MediaMonitorProtocol?
     private var musicController: NeteaseMusicController?
     private var stateEngine: StateTransitionEngine?
     private var menuBarController: MenuBarController?
@@ -42,6 +42,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 立即创建状态栏图标（在等待权限期间显示）
         setupInitialStatusItem()
+
+        guard #available(macOS 14.2, *) else {
+            logError("当前系统版本不支持 Process Tap（需要 macOS 14.2+）", module: "App")
+            updateInitialStatusItem(icon: "⚠️", text: "⚠️ 需要 macOS 14.2+（音频捕获）")
+
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "系统版本不支持"
+                alert.informativeText = "CloudYield 需要 macOS 14.2+ 才能通过 Process Tap 检测其他应用出声。"
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "退出")
+                alert.runModal()
+                NSApplication.shared.terminate(nil)
+            }
+            return
+        }
 
         // 异步等待权限并初始化服务
         Task {
@@ -161,8 +177,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 1. 初始化音乐控制器
         musicController = NeteaseMusicController()
 
-        // 2. 初始化 Now Playing 监控服务
-        mediaMonitor = NowPlayingMonitor()
+        // 2. 初始化“其他应用出声”监控服务（Process Tap）
+        if #available(macOS 14.2, *) {
+            mediaMonitor = OtherAudioMonitor()
+        }
 
         // 3. 初始化状态引擎
         if let musicController = musicController, let mediaMonitor = mediaMonitor {
@@ -171,9 +189,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 mediaMonitor: mediaMonitor
             )
 
-            // 设置回调：NowPlaying 状态变化 → 状态引擎
-            mediaMonitor.onNowPlayingChanged = { [weak self] status in
-                self?.stateEngine?.onNowPlayingChanged(status: status)
+            // 设置回调：音频状态变化 → 状态引擎
+            mediaMonitor.onStatusChanged = { [weak self] status in
+                self?.stateEngine?.onAudioStatusChanged(status: status)
             }
         }
 
@@ -182,7 +200,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menuBarController = MenuBarController(stateEngine: stateEngine)
         }
 
-        // 5. 启动 Now Playing 监控
+        // 5. 启动音频监控
         mediaMonitor?.startMonitoring()
 
         // 6. 启动状态引擎

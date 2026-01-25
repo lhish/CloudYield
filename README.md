@@ -26,16 +26,9 @@ brew tap lhish/cloudyield
 brew install --cask cloudyield
 ```
 
-依赖 `media-control` 会自动安装。
-
 ### 手动下载
 
 从 [Releases](https://github.com/lhish/CloudYield/releases) 下载最新版本的 `.app` 文件。
-
-需要先安装依赖：
-```bash
-brew install ungive/media-control/media-control
-```
 
 ### 从源码构建
 
@@ -63,32 +56,29 @@ swift build -c release
 
 ## 工作原理
 
-1. 使用 `media-control` 监控系统 **Now Playing** 状态
-2. 检测到非网易云应用播放时，通过 **AppleScript** 暂停网易云
-3. 检测到其他应用停止播放时，自动恢复网易云
+1. 使用 CoreAudio **Process Tap** 检测“除网易云外是否有其他应用正在出声”（需要授予 **音频捕获** 权限）
+2. 检测到其他应用出声时，通过 **AppleScript** 暂停网易云；停止出声后自动恢复
 
-### 6 状态模型
+### 状态模型
 
-应用内部使用 6 状态有限状态机管理：
+应用内部使用有限状态机管理（核心维度：其他应用是否出声 + 网易云是否播放）：
 
-| 状态 | NowPlaying | 网易云 | 说明 |
-|------|------------|--------|------|
-| S1 | 网易云播放 | 播放 | 正常播放 |
-| S2 | 网易云暂停 | 暂停 | 正常暂停 |
-| S3 | 其他播放 | 播放 | 冲突 → 自动暂停 |
-| S4 | 其他播放 | 暂停 | 已暂停 |
-| S5 | 其他空闲 | 播放 | 正常播放 |
-| S6 | 其他空闲 | 暂停 | 正常暂停 |
+| 其他应用出声 | 网易云 | 说明 |
+|-------------|--------|------|
+| 否 | 播放 | 正常播放 |
+| 否 | 暂停 | 正常暂停 |
+| 是 | 播放 | 冲突 → 自动暂停 |
+| 是 | 暂停 | 已暂停 |
 
 ## 系统要求
 
-- macOS 13.0+
+- macOS 14.2+
 - 网易云音乐 macOS 版
-- `media-control` CLI 工具
 
 ## 权限说明
 
 - **辅助功能权限**：用于通过 AppleScript 控制网易云音乐的播放/暂停
+- **音频捕获权限**：用于检测其他应用是否出声（Process Tap）
 
 ## 日志
 
@@ -100,4 +90,4 @@ swift build -c release
 
 ## 致谢
 
-- [media-control](https://github.com/ungive/media-control) - 用于获取系统 Now Playing 状态
+- [AudioCap](https://github.com/insidegui/AudioCap) - Process Tap API 实践参考

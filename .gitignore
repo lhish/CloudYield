@@ -38,10 +38,13 @@ xcuserdata/
 *.xcuserdatad
 .idea/
 *.hmap
+.serena/
+.index-build/
 
 # Other
 *.moved-aside
 *.orig
+CloudYield.zip
 
 # Firebase
 firebase-debug.log

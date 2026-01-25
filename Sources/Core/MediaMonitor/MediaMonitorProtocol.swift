@@ -2,10 +2,8 @@
 //  MediaMonitorProtocol.swift
 //  StillMusicWhenBack
 //
-//  媒体监控协议 - 监控 NowPlaying 状态变化
+//  媒体监控协议 - 监控“是否有其他应用出声”状态变化
 //
-
-import Foundation
 
 protocol MediaMonitorProtocol {
     /// 开始监控
@@ -14,7 +12,7 @@ protocol MediaMonitorProtocol {
     /// 停止监控
     func stopMonitoring()
 
-    /// 当 NowPlaying 状态变化时的回调
-    /// 返回是否有非网易云应用正在播放
-    var onNowPlayingChanged: ((NowPlayingStatus) -> Void)? { get set }
+    /// 当音频监控状态变化时的回调
+    /// 返回是否检测到除网易云外的其他应用出声
+    var onStatusChanged: ((AudioMonitorStatus) -> Void)? { get set }
 }

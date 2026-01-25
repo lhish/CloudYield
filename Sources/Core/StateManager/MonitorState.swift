@@ -2,79 +2,59 @@
 //  MonitorState.swift
 //  StillMusicWhenBack
 //
-//  应用状态枚举 - 6状态模型
+//  应用状态枚举 - 基于“其他应用是否出声”+“网易云是否播放”
 //
 //  状态由两个维度决定：
-//  1. 是否有非网易云应用在播放（NowPlaying）
+//  1. 是否检测到除网易云外的其他应用出声（Process Tap）
 //  2. 网易云自身是否在播放（AppleScript检测）
 //
 
 import Foundation
 
-// MARK: - NowPlaying 状态结构
+// MARK: - 音频监控状态结构
 
-/// NowPlaying 返回的状态信息
-struct NowPlayingStatus: Equatable {
-    let isNeteaseAsNowPlaying: Bool  // NowPlaying 是否为网易云
-    let isOtherAppPlaying: Bool      // 是否有非网易云应用正在播放
-    let currentBundleID: String?     // 当前 NowPlaying 应用的 bundleID
-    let isCurrentlyPlaying: Bool     // 当前 NowPlaying 应用是否正在播放
+/// 音频监控返回的状态信息
+struct AudioMonitorStatus: Equatable {
+    let isOtherAppAudible: Bool  // 是否检测到除网易云外的其他应用出声
 
-    static let idle = NowPlayingStatus(
-        isNeteaseAsNowPlaying: false,
-        isOtherAppPlaying: false,
-        currentBundleID: nil,
-        isCurrentlyPlaying: false
-    )
+    static let idle = AudioMonitorStatus(isOtherAppAudible: false)
 }
 
 // MARK: - 应用状态枚举
 
-/// 6状态模型
-/// - S1: NowPlaying=网易云播放中
-/// - S2: NowPlaying=网易云暂停
-/// - S3: 其他应用播放 + 网易云播放（冲突状态，需自动暂停网易云）
-/// - S4: 其他应用播放 + 网易云暂停
-/// - S5: 其他应用暂停/无 + 网易云播放
-/// - S6: 其他应用暂停/无 + 网易云暂停
+/// 状态模型
+/// - otherPlayingNeteasePlaying: 其他应用出声 + 网易云播放（冲突，需自动暂停）
+/// - otherPlayingNeteasePaused: 其他应用出声 + 网易云暂停
+/// - neteasePlaying: 其他应用静音/停止出声 + 网易云播放
+/// - neteasePaused: 其他应用静音/停止出声 + 网易云暂停
 enum AppState: Equatable {
-    case s1_neteasePlayingAsNowPlaying    // 网易云是 NowPlaying 且播放中
-    case s2_neteasePausedAsNowPlaying     // 网易云是 NowPlaying 且暂停
-    case s3_otherPlayingNeteasePlaying    // 其他应用播放，网易云也在播放（冲突）
-    case s4_otherPlayingNeteasePaused     // 其他应用播放，网易云已暂停
-    case s5_otherIdleNeteasePlaying       // 其他应用空闲，网易云播放中
-    case s6_otherIdleNeteasePaused        // 其他应用空闲，网易云暂停
+    case otherPlayingNeteasePlaying
+    case otherPlayingNeteasePaused
+    case neteasePlaying
+    case neteasePaused
 
     var description: String {
         switch self {
-        case .s1_neteasePlayingAsNowPlaying:
-            return "网易云播放中"
-        case .s2_neteasePausedAsNowPlaying:
-            return "网易云已暂停"
-        case .s3_otherPlayingNeteasePlaying:
+        case .otherPlayingNeteasePlaying:
             return "检测到其他声音..."
-        case .s4_otherPlayingNeteasePaused:
+        case .otherPlayingNeteasePaused:
             return "已暂停网易云"
-        case .s5_otherIdleNeteasePlaying:
+        case .neteasePlaying:
             return "网易云播放中"
-        case .s6_otherIdleNeteasePaused:
+        case .neteasePaused:
             return "网易云已暂停"
         }
     }
 
     var icon: String {
         switch self {
-        case .s1_neteasePlayingAsNowPlaying:
+        case .neteasePlaying:
             return "🎵"
-        case .s2_neteasePausedAsNowPlaying:
+        case .neteasePaused:
             return "⏸"
-        case .s3_otherPlayingNeteasePlaying:
+        case .otherPlayingNeteasePlaying:
             return "🔊"
-        case .s4_otherPlayingNeteasePaused:
-            return "⏸"
-        case .s5_otherIdleNeteasePlaying:
-            return "🎵"
-        case .s6_otherIdleNeteasePaused:
+        case .otherPlayingNeteasePaused:
             return "⏸"
         }
     }
@@ -82,7 +62,7 @@ enum AppState: Equatable {
     /// 是否有其他应用在播放
     var isOtherAppPlaying: Bool {
         switch self {
-        case .s3_otherPlayingNeteasePlaying, .s4_otherPlayingNeteasePaused:
+        case .otherPlayingNeteasePlaying, .otherPlayingNeteasePaused:
             return true
         default:
             return false
@@ -92,7 +72,7 @@ enum AppState: Equatable {
     /// 网易云是否在播放
     var isNeteasePlaying: Bool {
         switch self {
-        case .s1_neteasePlayingAsNowPlaying, .s3_otherPlayingNeteasePlaying, .s5_otherIdleNeteasePlaying:
+        case .neteasePlaying, .otherPlayingNeteasePlaying:
             return true
         default:
             return false
@@ -101,24 +81,16 @@ enum AppState: Equatable {
 
     /// 根据两个维度计算当前状态
     /// - Parameters:
-    ///   - isOtherAppPlaying: 是否有非网易云应用正在播放
+    ///   - isOtherAppAudible: 是否检测到除网易云外的其他应用出声
     ///   - isNeteasePlaying: 网易云是否在播放（AppleScript 检测）
-    ///   - isNeteaseAsNowPlaying: NowPlaying 是否为网易云
     static func from(
-        isOtherAppPlaying: Bool,
-        isNeteasePlaying: Bool,
-        isNeteaseAsNowPlaying: Bool
+        isOtherAppAudible: Bool,
+        isNeteasePlaying: Bool
     ) -> AppState {
-        if isNeteaseAsNowPlaying {
-            // NowPlaying 是网易云
-            return isNeteasePlaying ? .s1_neteasePlayingAsNowPlaying : .s2_neteasePausedAsNowPlaying
-        } else if isOtherAppPlaying {
-            // 有其他应用在播放
-            return isNeteasePlaying ? .s3_otherPlayingNeteasePlaying : .s4_otherPlayingNeteasePaused
+        if isOtherAppAudible {
+            return isNeteasePlaying ? .otherPlayingNeteasePlaying : .otherPlayingNeteasePaused
         } else {
-            // 没有其他应用播放（或 NowPlaying 为空）
-            return isNeteasePlaying ? .s5_otherIdleNeteasePlaying : .s6_otherIdleNeteasePaused
+            return isNeteasePlaying ? .neteasePlaying : .neteasePaused
         }
     }
 }
-

@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "CloudYield",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(
@@ -15,13 +15,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CloudYield",
-            path: "Sources",
-            linkerSettings: [
-                .unsafeFlags([
-                    "-F", "/System/Library/PrivateFrameworks",
-                    "-framework", "MediaRemote"
-                ])
-            ]
+            path: "Sources"
         )
     ]
 )
