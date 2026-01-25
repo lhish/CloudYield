@@ -7,6 +7,10 @@ echo "🎵 CloudYield - 智能音乐助手"
 echo "=========================================="
 echo ""
 
+# 避免 clang 模块缓存写入受限目录（尤其是在沙盒/受限环境中）
+export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-/tmp/clang-module-cache}"
+mkdir -p "${CLANG_MODULE_CACHE_PATH}"
+
 # 检查构建产物是否存在
 if [ ! -f ".build/debug/CloudYield" ]; then
     echo "⚠️  未找到可执行文件，正在构建..."

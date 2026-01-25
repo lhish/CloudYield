@@ -29,6 +29,10 @@ class StateTransitionEngine {
     // 缓存网易云播放状态（只在必要时刷新，避免高频 AppleScript 轮询）
     private var lastKnownNeteasePlaying = false
 
+    // 静音后延迟恢复（避免短暂停顿/切歌导致频繁恢复）
+    private let resumeAfterSilenceDelay: TimeInterval = 2.0
+    private var resumeWorkItem: DispatchWorkItem?
+
     // 状态变化回调
     var onStateChanged: ((AppState) -> Void)?
 
@@ -51,6 +55,8 @@ class StateTransitionEngine {
     /// 停止状态引擎
     func stop() {
         logInfo("停止状态引擎", module: "StateEngine")
+        resumeWorkItem?.cancel()
+        resumeWorkItem = nil
     }
 
     /// 音频监控状态变化回调
@@ -103,6 +109,9 @@ class StateTransitionEngine {
     }
 
     private func handleOtherAudioStarted() {
+        resumeWorkItem?.cancel()
+        resumeWorkItem = nil
+
         refreshNeteasePlaying()
 
         guard lastKnownNeteasePlaying else {
@@ -133,24 +142,41 @@ class StateTransitionEngine {
             return
         }
 
-        // 避免用户已手动恢复时重复点击“播放”导致脚本失败刷日志
-        if musicController.isPlaying() {
-            wasPausedByApp = false
-            lastKnownNeteasePlaying = true
-            return
+        scheduleResumeAfterSilence()
+    }
+
+    private func scheduleResumeAfterSilence() {
+        resumeWorkItem?.cancel()
+
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.wasPausedByApp else { return }
+            guard !self.lastAudioStatus.isOtherAppAudible else { return }
+
+            // 用户已手动恢复时不再重复点击“播放”
+            if self.musicController.isPlaying() {
+                self.wasPausedByApp = false
+                self.lastKnownNeteasePlaying = true
+                self.publishStateIfNeeded()
+                return
+            }
+
+            logInfo("已静音 \(Int(self.resumeAfterSilenceDelay)) 秒，尝试恢复网易云...", module: "StateEngine")
+            if self.musicController.play() {
+                self.wasPausedByApp = false
+                self.lastKnownNeteasePlaying = true
+                self.publishStateIfNeeded()
+                return
+            }
+
+            // 恢复失败：刷新一次状态，不强行重试（避免抖动/刷屏）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.refreshNeteasePlaying()
+                self?.publishStateIfNeeded()
+            }
         }
 
-        logInfo("其他应用停止，尝试恢复网易云...", module: "StateEngine")
-        if musicController.play() {
-            wasPausedByApp = false
-            lastKnownNeteasePlaying = true
-            return
-        }
-
-        // 恢复失败：稍后再刷新一次状态（不强行重试，留给用户/下一次事件）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.refreshNeteasePlaying()
-            self?.publishStateIfNeeded()
-        }
+        resumeWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + resumeAfterSilenceDelay, execute: item)
     }
 }

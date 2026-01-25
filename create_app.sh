@@ -15,6 +15,10 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
+# 避免 clang 模块缓存写入受限目录（尤其是在沙盒/受限环境中）
+export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-/tmp/clang-module-cache}"
+mkdir -p "${CLANG_MODULE_CACHE_PATH}"
+
 # 1. 构建 Release 版本
 echo "1️⃣  构建 Release 版本..."
 swift build --disable-sandbox -c release
