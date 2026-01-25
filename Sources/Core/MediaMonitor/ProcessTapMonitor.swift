@@ -14,10 +14,10 @@ import Foundation
 @available(macOS 14.2, *)
 final class ProcessTapMonitor {
     struct Config {
-        var evaluationInterval: TimeInterval = 0.02
+        var evaluationInterval: TimeInterval = 0.01
         var dbOn: Double = -55
         var dbOff: Double = -65
-        var minOnSeconds: TimeInterval = 0.05
+        var minOnSeconds: TimeInterval = 0.02
         var minOffSeconds: TimeInterval = 0.10
         var staleTimeoutSeconds: TimeInterval = 0.35
         var excludeBundleIDSubstrings: [String] = ["netease", "163music"]

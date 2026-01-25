@@ -64,18 +64,19 @@ class NeteaseMusicController {
     @discardableResult
     func pause() -> Bool {
         guard isRunning() else {
-            logWarning("网易云音乐未运行", module: "MusicController")
             return false
         }
-
-        logInfo("暂停播放...", module: "MusicController")
 
         let script = """
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    click menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
-                    return "success"
+                    if exists menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
+                        click menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
+                        return "success"
+                    else
+                        return "not-playing"
+                    end if
                 on error errMsg
                     return "error: " & errMsg
                 end try
@@ -90,6 +91,10 @@ class NeteaseMusicController {
             return true
         }
 
+        if result.contains("not-playing") {
+            return false
+        }
+
         logWarning("暂停失败: \(result)", module: "MusicController")
         return false
     }
@@ -98,18 +103,19 @@ class NeteaseMusicController {
     @discardableResult
     func play() -> Bool {
         guard isRunning() else {
-            logWarning("网易云音乐未运行", module: "MusicController")
             return false
         }
-
-        logInfo("恢复播放...", module: "MusicController")
 
         let script = """
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    click menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
-                    return "success"
+                    if exists menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
+                        click menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
+                        return "success"
+                    else
+                        return "not-paused"
+                    end if
                 on error errMsg
                     return "error: " & errMsg
                 end try
@@ -122,6 +128,10 @@ class NeteaseMusicController {
         if result.contains("success") {
             logSuccess("已恢复播放", module: "MusicController")
             return true
+        }
+
+        if result.contains("not-paused") {
+            return false
         }
 
         logWarning("恢复失败: \(result)", module: "MusicController")

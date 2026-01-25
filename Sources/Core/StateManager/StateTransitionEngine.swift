@@ -112,22 +112,20 @@ class StateTransitionEngine {
         resumeWorkItem?.cancel()
         resumeWorkItem = nil
 
-        refreshNeteasePlaying()
-
-        guard lastKnownNeteasePlaying else {
+        guard musicController.isRunning() else {
             wasPausedByApp = false
+            lastKnownNeteasePlaying = false
             return
         }
 
-        logInfo("检测到其他应用出声且网易云在播放，尝试暂停...", module: "StateEngine")
         if musicController.pause() {
             wasPausedByApp = true
             lastKnownNeteasePlaying = false
             return
         }
 
-        // 暂停失败：稍后再刷新一次状态（避免立即刷屏/重试过猛）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        // 未暂停（可能本来就没在播，也可能脚本失败）：稍后刷新一次状态，避免阻塞主线程
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.refreshNeteasePlaying()
             self?.publishStateIfNeeded()
         }
@@ -152,6 +150,13 @@ class StateTransitionEngine {
             guard let self else { return }
             guard self.wasPausedByApp else { return }
             guard !self.lastAudioStatus.isOtherAppAudible else { return }
+
+            guard self.musicController.isRunning() else {
+                self.wasPausedByApp = false
+                self.lastKnownNeteasePlaying = false
+                self.publishStateIfNeeded()
+                return
+            }
 
             // 用户已手动恢复时不再重复点击“播放”
             if self.musicController.isPlaying() {
