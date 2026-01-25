@@ -45,6 +45,7 @@ xcuserdata/
 *.moved-aside
 *.orig
 CloudYield.zip
+CloudYield-*.zip
 
 # Firebase
 firebase-debug.log
