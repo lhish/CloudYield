@@ -190,7 +190,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
 
             // 设置回调：音频状态变化 → 状态引擎
-            mediaMonitor.onStatusChanged = { [weak self] status in
+            self.mediaMonitor?.onStatusChanged = { [weak self] status in
                 self?.stateEngine?.onAudioStatusChanged(status: status)
             }
         }

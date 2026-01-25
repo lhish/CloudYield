@@ -10,7 +10,7 @@ echo ""
 # 检查构建产物是否存在
 if [ ! -f ".build/debug/CloudYield" ]; then
     echo "⚠️  未找到可执行文件，正在构建..."
-    swift build
+    swift build --disable-sandbox
 
     if [ $? -ne 0 ]; then
         echo "❌ 构建失败，请检查错误信息"
@@ -24,7 +24,7 @@ echo ""
 echo "💡 提示："
 echo "  - 首次运行需要授予辅助功能权限"
 echo "  - 辅助功能权限：用于控制网易云音乐"
-echo "  - 需要安装 media-control：brew install ungive/media-control/media-control"
+echo "  - 音频捕获权限：用于检测其他应用是否出声（建议用 ./create_app.sh 打包后运行）"
 echo "  - 使用 Ctrl+C 停止应用"
 echo ""
 echo "📊 应用将在 3 秒后启动..."

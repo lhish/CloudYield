@@ -17,7 +17,7 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 # 1. 构建 Release 版本
 echo "1️⃣  构建 Release 版本..."
-swift build -c release
+swift build --disable-sandbox -c release
 
 if [ ! -f "$BUILD_DIR/$APP_NAME" ]; then
     echo "❌ 构建失败，找不到可执行文件"

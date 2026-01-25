@@ -61,10 +61,11 @@ class NeteaseMusicController {
     }
 
     /// 暂停播放
-    func pause() {
+    @discardableResult
+    func pause() -> Bool {
         guard isRunning() else {
             logWarning("网易云音乐未运行", module: "MusicController")
-            return
+            return false
         }
 
         logInfo("暂停播放...", module: "MusicController")
@@ -86,16 +87,19 @@ class NeteaseMusicController {
 
         if result.contains("success") {
             logSuccess("已暂停", module: "MusicController")
-        } else {
-            logWarning("暂停失败: \(result)", module: "MusicController")
+            return true
         }
+
+        logWarning("暂停失败: \(result)", module: "MusicController")
+        return false
     }
 
     /// 恢复播放
-    func play() {
+    @discardableResult
+    func play() -> Bool {
         guard isRunning() else {
             logWarning("网易云音乐未运行", module: "MusicController")
-            return
+            return false
         }
 
         logInfo("恢复播放...", module: "MusicController")
@@ -117,39 +121,32 @@ class NeteaseMusicController {
 
         if result.contains("success") {
             logSuccess("已恢复播放", module: "MusicController")
-        } else {
-            logWarning("恢复失败: \(result)", module: "MusicController")
+            return true
         }
+
+        logWarning("恢复失败: \(result)", module: "MusicController")
+        return false
     }
 
     // MARK: - Private Methods
 
-    /// 执行 AppleScript（通过 osascript 命令）
+    /// 执行 AppleScript（使用 NSAppleScript，避免频繁 spawn `osascript` 进程）
     private func executeAppleScript(_ script: String) -> String {
-        let process = Process()
-        let pipe = Pipe()
+        var error: NSDictionary?
+        guard let appleScript = NSAppleScript(source: script) else {
+            return "error: failed to create NSAppleScript"
+        }
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = pipe
-        process.standardError = pipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-            if process.terminationStatus != 0 {
-                logDebug("osascript 退出码: \(process.terminationStatus), 输出: \(output)", module: "MusicController")
-                return "error: \(output)"
-            }
-
-            return output
-        } catch {
-            logError("执行 osascript 失败: \(error)", module: "MusicController")
+        let result = appleScript.executeAndReturnError(&error)
+        if let error {
+            logDebug("AppleScript 执行失败: \(error)", module: "MusicController")
             return "error: \(error)"
         }
+
+        if let string = result.stringValue {
+            return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return result.description.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
