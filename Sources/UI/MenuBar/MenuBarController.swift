@@ -175,7 +175,7 @@ class MenuBarController: NSObject {
         let alert = NSAlert()
         alert.messageText = "CloudYield"
         alert.informativeText = """
-        版本: 1.0.1
+        版本: 1.1.1
         作者: lhish
         开源地址: github.com/lhish/CloudYield
 
