@@ -14,7 +14,7 @@ import Foundation
 @available(macOS 14.2, *)
 final class ProcessTapMonitor {
     struct Config {
-        var evaluationInterval: TimeInterval = 0.1
+        var evaluationInterval: TimeInterval = 0.02
         var dbOn: Double = -55
         var dbOff: Double = -65
         var minOnSeconds: TimeInterval = 0.05
@@ -602,4 +602,3 @@ private func computeRMS(bufferList: UnsafePointer<AudioBufferList>, asbd: AudioS
     guard count > 0 else { return nil }
     return sqrt(sumSquares / Double(count))
 }
-
