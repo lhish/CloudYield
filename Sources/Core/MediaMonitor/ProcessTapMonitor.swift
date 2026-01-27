@@ -96,12 +96,16 @@ final class ProcessTapMonitor {
     private func requestRestart(reason: String) {
         guard isRunning else { return }
 
+        logDebug("Process Tap 请求重启: \(reason)", module: "OtherAudio")
+
         restartWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.isRunning else { return }
             self.destroyTap()
             do {
                 try self.startTap()
+                self.startTimer()
+                logDebug("Process Tap 重启完成", module: "OtherAudio")
             } catch {
                 self.handleError(error)
             }
@@ -191,7 +195,6 @@ final class ProcessTapMonitor {
         }
 
         tapASBD = nil
-        audible = false
         pendingTarget = nil
         pendingSince = nil
     }
