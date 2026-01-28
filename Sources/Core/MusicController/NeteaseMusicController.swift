@@ -16,6 +16,44 @@ class NeteaseMusicController {
     private let playMenuItemName = "播放"
     private let pauseMenuItemName = "暂停"
 
+    // 音量控制器（macOS 14.2+）
+    private var volumeController: Any?
+
+    private var isVolumeControlEnabled: Bool {
+        if #available(macOS 14.2, *) {
+            return true
+        }
+        return false
+    }
+
+    @available(macOS 14.2, *)
+    private func getVolumeController() -> NeteaseMusicVolumeController? {
+        if volumeController == nil {
+            let controller = NeteaseMusicVolumeController()
+            controller.onError = { error in
+                logWarning("音量控制器错误: \(error)", module: "MusicController")
+            }
+            volumeController = controller
+        }
+        return volumeController as? NeteaseMusicVolumeController
+    }
+
+    // MARK: - Initialization
+
+    init() {
+        // 启动音量控制器
+        if #available(macOS 14.2, *), isVolumeControlEnabled {
+            getVolumeController()?.start()
+        }
+    }
+
+    deinit {
+        // 停止音量控制器
+        if #available(macOS 14.2, *), isVolumeControlEnabled {
+            getVolumeController()?.stop()
+        }
+    }
+
     // MARK: - Public Methods
 
     /// 检查网易云音乐是否正在运行
@@ -60,9 +98,28 @@ class NeteaseMusicController {
         }
     }
 
-    /// 暂停播放
+    /// 暂停播放（带音量淡出）
     @discardableResult
     func pause() -> Bool {
+        guard isRunning() else {
+            return false
+        }
+
+        // 如果支持音量控制，先淡出音量再暂停
+        if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
+            controller.fadeOut(duration: 0.5) { [weak self] in
+                self?.pausePlayback()
+            }
+            return true
+        }
+
+        // 降级方案：直接暂停
+        return pausePlayback()
+    }
+
+    /// 实际执行暂停操作
+    @discardableResult
+    private func pausePlayback() -> Bool {
         guard isRunning() else {
             return false
         }
@@ -99,9 +156,29 @@ class NeteaseMusicController {
         return false
     }
 
-    /// 恢复播放
+    /// 恢复播放（带音量淡入）
     @discardableResult
     func play() -> Bool {
+        guard isRunning() else {
+            return false
+        }
+
+        // 先恢复播放
+        guard playPlayback() else {
+            return false
+        }
+
+        // 如果支持音量控制，淡入音量
+        if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
+            controller.fadeIn(duration: 0.5)
+        }
+
+        return true
+    }
+
+    /// 实际执行恢复播放操作
+    @discardableResult
+    private func playPlayback() -> Bool {
         guard isRunning() else {
             return false
         }
