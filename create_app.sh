@@ -9,7 +9,7 @@ echo "📦 创建 macOS 应用包..."
 echo "=========================================="
 
 APP_NAME="CloudYield"
-VERSION="1.3.0"
+VERSION="1.3.1"
 BUILD_NUMBER="4"
 BUILD_DIR=".build/release"
 APP_DIR="$APP_NAME.app"
