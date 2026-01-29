@@ -20,7 +20,7 @@ final class ProcessTapMonitor {
         var minOnSeconds: TimeInterval = 0.02
         var minOffSeconds: TimeInterval = 0.10
         var staleTimeoutSeconds: TimeInterval = 0.35
-        var excludeBundleIDSubstrings: [String] = ["netease", "163music"]
+        var excludeBundleIDSubstrings: [String] = ["netease", "163music", "cloudyield"]
     }
 
     enum MonitorError: LocalizedError {
