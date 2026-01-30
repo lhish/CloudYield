@@ -105,6 +105,14 @@ class NeteaseMusicController {
             return false
         }
 
+        // 关键：只有在“确实正在播放”时才认为这次暂停是有效的。
+        // 否则会让状态机误判为“由应用暂停”，进而在其他应用静音后自动恢复播放，
+        // 出现“我手动暂停了但又被自动播放”的反直觉行为。
+        guard isPlaying() else {
+            logDebug("跳过暂停：当前未在播放", module: "MusicController")
+            return false
+        }
+
         // 如果支持音量控制，先淡出音量再暂停
         if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
             controller.fadeOut(duration: 0.5) { [weak self] in

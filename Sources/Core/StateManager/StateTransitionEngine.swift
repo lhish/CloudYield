@@ -124,6 +124,10 @@ class StateTransitionEngine {
             return
         }
 
+        // 未能暂停：说明当前本来就没在播放（或暂停失败）。
+        // 无论哪种情况，都不应在“其他应用静音后”自动恢复播放。
+        wasPausedByApp = false
+
         // 未暂停（可能本来就没在播，也可能脚本失败）：稍后刷新一次状态，避免阻塞主线程
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             self?.refreshNeteasePlaying()
