@@ -31,6 +31,9 @@ class StateTransitionEngine {
 
     // 静音后延迟恢复（避免短暂停顿/切歌导致频繁恢复）
     private let resumeAfterSilenceDelay: TimeInterval = 2.0
+    private let resumeRetryBaseDelay: TimeInterval = 0.6
+    private let resumeMaxRetryCount = 3
+    private var resumeRetryCount = 0
     private var resumeWorkItem: DispatchWorkItem?
 
     // 状态变化回调
@@ -111,6 +114,7 @@ class StateTransitionEngine {
     private func handleOtherAudioStarted() {
         resumeWorkItem?.cancel()
         resumeWorkItem = nil
+        resumeRetryCount = 0
 
         guard musicController.isRunning() else {
             wasPausedByApp = false
@@ -148,9 +152,63 @@ class StateTransitionEngine {
     }
 
     private func scheduleResumeAfterSilence() {
+        resumeRetryCount = 0
+        scheduleResumeAttempt(after: resumeAfterSilenceDelay, isFirstAttempt: true)
+    }
+
+    private func scheduleResumeRetry() {
+        guard wasPausedByApp else { return }
+        guard !lastAudioStatus.isOtherAppAudible else { return }
+
+        guard resumeRetryCount < resumeMaxRetryCount else {
+            logWarning("恢复失败已达上限，停止自动重试", module: "StateEngine")
+            wasPausedByApp = false
+            return
+        }
+
+        resumeRetryCount += 1
+        let delay = resumeRetryBaseDelay * pow(1.6, Double(resumeRetryCount - 1))
+        logWarning("恢复失败，\(String(format: "%.1f", delay)) 秒后重试 (\(resumeRetryCount)/\(resumeMaxRetryCount))", module: "StateEngine")
+        scheduleResumeAttempt(after: delay, isFirstAttempt: false)
+    }
+
+    private func scheduleResumeAttempt(after delay: TimeInterval, isFirstAttempt: Bool) {
         resumeWorkItem?.cancel()
 
         let item = DispatchWorkItem { [weak self] in
+            self?.attemptResume(isFirstAttempt: isFirstAttempt)
+        }
+
+        resumeWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    private func attemptResume(isFirstAttempt: Bool) {
+        guard wasPausedByApp else { return }
+        guard !lastAudioStatus.isOtherAppAudible else { return }
+
+        guard musicController.isRunning() else {
+            wasPausedByApp = false
+            lastKnownNeteasePlaying = false
+            publishStateIfNeeded()
+            return
+        }
+
+        if isFirstAttempt {
+            logInfo("已静音 \(Int(resumeAfterSilenceDelay)) 秒，尝试恢复网易云...", module: "StateEngine")
+        } else {
+            logInfo("尝试恢复网易云（重试 \(resumeRetryCount)/\(resumeMaxRetryCount)）...", module: "StateEngine")
+        }
+
+        if musicController.play() {
+            wasPausedByApp = false
+            lastKnownNeteasePlaying = true
+            publishStateIfNeeded()
+            return
+        }
+
+        // 恢复失败：先刷新一次状态；如果仍未恢复且未达到上限，再做有限重试。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { return }
             guard self.wasPausedByApp else { return }
             guard !self.lastAudioStatus.isOtherAppAudible else { return }
@@ -162,30 +220,15 @@ class StateTransitionEngine {
                 return
             }
 
-            // 用户已手动恢复时不再重复点击“播放”
-            if self.musicController.isPlaying() {
+            self.refreshNeteasePlaying()
+            self.publishStateIfNeeded()
+
+            if self.lastKnownNeteasePlaying {
                 self.wasPausedByApp = false
-                self.lastKnownNeteasePlaying = true
-                self.publishStateIfNeeded()
                 return
             }
 
-            logInfo("已静音 \(Int(self.resumeAfterSilenceDelay)) 秒，尝试恢复网易云...", module: "StateEngine")
-            if self.musicController.play() {
-                self.wasPausedByApp = false
-                self.lastKnownNeteasePlaying = true
-                self.publishStateIfNeeded()
-                return
-            }
-
-            // 恢复失败：刷新一次状态，不强行重试（避免抖动/刷屏）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.refreshNeteasePlaying()
-                self?.publishStateIfNeeded()
-            }
+            self.scheduleResumeRetry()
         }
-
-        resumeWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + resumeAfterSilenceDelay, execute: item)
     }
 }

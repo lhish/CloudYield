@@ -69,15 +69,26 @@ class NeteaseMusicController {
             return false
         }
 
-        // 通过检查菜单项来判断状态
+        // 通过检查“播放/暂停”菜单项是否存在来判断状态（避免依赖菜单排序）
         let script = """
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    set menuItemName to name of menu item 1 of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
-                    return menuItemName
-                on error
-                    return "error"
+                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
+                        return "no-menu"
+                    end if
+
+                    if exists menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
+                        return "playing"
+                    end if
+
+                    if exists menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
+                        return "paused"
+                    end if
+
+                    return "unknown"
+                on error errMsg
+                    return "error: " & errMsg
                 end try
             end tell
         end tell
@@ -85,17 +96,11 @@ class NeteaseMusicController {
 
         let result = executeAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if result == pauseMenuItemName {
-            // 如果菜单显示"暂停"，说明正在播放
-            return true
-        } else if result == playMenuItemName {
-            // 如果菜单显示"播放"，说明当前是暂停状态
-            return false
-        } else {
-            // 只在第一次失败时警告，避免日志刷屏
-            logDebug("AppleScript 获取播放状态返回: \(result)", module: "MusicController")
-            return false
-        }
+        if result == "playing" { return true }
+        if result == "paused" { return false }
+
+        logDebug("AppleScript 获取播放状态返回: \(result)", module: "MusicController")
+        return false
     }
 
     /// 暂停播放（带音量淡出）
@@ -136,6 +141,10 @@ class NeteaseMusicController {
         tell application "System Events"
             tell process "\(processName)"
                 try
+                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
+                        return "no-menu"
+                    end if
+
                     if exists menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
                         click menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
                         return "success"
@@ -171,8 +180,23 @@ class NeteaseMusicController {
             return false
         }
 
-        // 先恢复播放
-        guard playPlayback() else {
+        // 已经在播放时：不重复点击菜单，但仍然触发淡入（避免此前淡出后暂停失败导致“在播但没声音”）
+        if isPlaying() {
+            if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
+                controller.fadeIn(duration: 0.5)
+            }
+            return true
+        }
+
+        // 先尝试恢复播放
+        if !playPlayback() {
+            // AppleScript 可能偶发失败：如果实际已恢复播放，则当作成功处理
+            if isPlaying() {
+                if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
+                    controller.fadeIn(duration: 0.5)
+                }
+                return true
+            }
             return false
         }
 
@@ -195,6 +219,10 @@ class NeteaseMusicController {
         tell application "System Events"
             tell process "\(processName)"
                 try
+                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
+                        return "no-menu"
+                    end if
+
                     if exists menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
                         click menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
                         return "success"
