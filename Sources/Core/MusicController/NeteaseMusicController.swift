@@ -16,44 +16,6 @@ class NeteaseMusicController {
     private let playMenuItemName = "播放"
     private let pauseMenuItemName = "暂停"
 
-    // 音量控制器（macOS 14.2+）
-    private var volumeController: Any?
-
-    private var isVolumeControlEnabled: Bool {
-        if #available(macOS 14.2, *) {
-            return true
-        }
-        return false
-    }
-
-    @available(macOS 14.2, *)
-    private func getVolumeController() -> NeteaseMusicVolumeController? {
-        if volumeController == nil {
-            let controller = NeteaseMusicVolumeController()
-            controller.onError = { error in
-                logWarning("音量控制器错误: \(error)", module: "MusicController")
-            }
-            volumeController = controller
-        }
-        return volumeController as? NeteaseMusicVolumeController
-    }
-
-    // MARK: - Initialization
-
-    init() {
-        // 启动音量控制器
-        if #available(macOS 14.2, *), isVolumeControlEnabled {
-            getVolumeController()?.start()
-        }
-    }
-
-    deinit {
-        // 停止音量控制器
-        if #available(macOS 14.2, *), isVolumeControlEnabled {
-            getVolumeController()?.stop()
-        }
-    }
-
     // MARK: - Public Methods
 
     /// 检查网易云音乐是否正在运行
@@ -69,26 +31,15 @@ class NeteaseMusicController {
             return false
         }
 
-        // 通过检查“播放/暂停”菜单项是否存在来判断状态（避免依赖菜单排序）
+        // 通过检查菜单项来判断状态
         let script = """
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
-                        return "no-menu"
-                    end if
-
-                    if exists menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
-                        return "playing"
-                    end if
-
-                    if exists menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
-                        return "paused"
-                    end if
-
-                    return "unknown"
-                on error errMsg
-                    return "error: " & errMsg
+                    set menuItemName to name of menu item 1 of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
+                    return menuItemName
+                on error
+                    return "error"
                 end try
             end tell
         end tell
@@ -96,43 +47,22 @@ class NeteaseMusicController {
 
         let result = executeAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if result == "playing" { return true }
-        if result == "paused" { return false }
-
-        logDebug("AppleScript 获取播放状态返回: \(result)", module: "MusicController")
-        return false
+        if result == pauseMenuItemName {
+            // 如果菜单显示"暂停"，说明正在播放
+            return true
+        } else if result == playMenuItemName {
+            // 如果菜单显示"播放"，说明当前是暂停状态
+            return false
+        } else {
+            // 只在第一次失败时警告，避免日志刷屏
+            logDebug("AppleScript 获取播放状态返回: \(result)", module: "MusicController")
+            return false
+        }
     }
 
-    /// 暂停播放（带音量淡出）
+    /// 暂停播放
     @discardableResult
     func pause() -> Bool {
-        guard isRunning() else {
-            return false
-        }
-
-        // 关键：只有在“确实正在播放”时才认为这次暂停是有效的。
-        // 否则会让状态机误判为“由应用暂停”，进而在其他应用静音后自动恢复播放，
-        // 出现“我手动暂停了但又被自动播放”的反直觉行为。
-        guard isPlaying() else {
-            logDebug("跳过暂停：当前未在播放", module: "MusicController")
-            return false
-        }
-
-        // 如果支持音量控制，先淡出音量再暂停
-        if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
-            controller.fadeOut(duration: 0.5) { [weak self] in
-                self?.pausePlayback()
-            }
-            return true
-        }
-
-        // 降级方案：直接暂停
-        return pausePlayback()
-    }
-
-    /// 实际执行暂停操作
-    @discardableResult
-    private func pausePlayback() -> Bool {
         guard isRunning() else {
             return false
         }
@@ -141,10 +71,6 @@ class NeteaseMusicController {
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
-                        return "no-menu"
-                    end if
-
                     if exists menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
                         click menu item "\(pauseMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
                         return "success"
@@ -173,44 +99,9 @@ class NeteaseMusicController {
         return false
     }
 
-    /// 恢复播放（带音量淡入）
+    /// 恢复播放
     @discardableResult
     func play() -> Bool {
-        guard isRunning() else {
-            return false
-        }
-
-        // 已经在播放时：不重复点击菜单，但仍然触发淡入（避免此前淡出后暂停失败导致“在播但没声音”）
-        if isPlaying() {
-            if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
-                controller.fadeIn(duration: 0.5)
-            }
-            return true
-        }
-
-        // 先尝试恢复播放
-        if !playPlayback() {
-            // AppleScript 可能偶发失败：如果实际已恢复播放，则当作成功处理
-            if isPlaying() {
-                if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
-                    controller.fadeIn(duration: 0.5)
-                }
-                return true
-            }
-            return false
-        }
-
-        // 如果支持音量控制，淡入音量
-        if #available(macOS 14.2, *), isVolumeControlEnabled, let controller = getVolumeController() {
-            controller.fadeIn(duration: 0.5)
-        }
-
-        return true
-    }
-
-    /// 实际执行恢复播放操作
-    @discardableResult
-    private func playPlayback() -> Bool {
         guard isRunning() else {
             return false
         }
@@ -219,10 +110,6 @@ class NeteaseMusicController {
         tell application "System Events"
             tell process "\(processName)"
                 try
-                    if not (exists menu bar item "\(menuBarItemName)" of menu bar 1) then
-                        return "no-menu"
-                    end if
-
                     if exists menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1 then
                         click menu item "\(playMenuItemName)" of menu "\(menuBarItemName)" of menu bar item "\(menuBarItemName)" of menu bar 1
                         return "success"

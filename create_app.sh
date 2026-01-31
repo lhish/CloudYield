@@ -9,8 +9,8 @@ echo "📦 创建 macOS 应用包..."
 echo "=========================================="
 
 APP_NAME="CloudYield"
-VERSION="1.3.3"
-BUILD_NUMBER="6"
+VERSION="1.2.0"
+BUILD_NUMBER="4"
 BUILD_DIR=".build/release"
 APP_DIR="$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -114,31 +114,53 @@ ENTITLEMENTS
 echo "✅ Entitlements 已创建"
 echo ""
 
-# 7. 代码签名（使用固定的 identifier + Hardened Runtime 避免每次重签导致权限丢失）
+# 7. 代码签名
 echo "7️⃣  代码签名..."
 
-# 先移除已有签名
-codesign --remove-signature "$APP_DIR" 2>/dev/null || true
+# macOS 的隐私权限（辅助功能/自动化/音频捕获）会绑定到签名身份。
+# 你如果每次都用 ad-hoc（--sign -）重签，CDHash 每次变，系统就当“新软件”，自然要你重新授权。
+SIGN_IDENTITY="${CLOUDYIELD_CODESIGN_IDENTITY:-${CODESIGN_IDENTITY:-}}"
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m 1 'Developer ID Application' | sed -E 's/^ *[0-9]+\\) [0-9A-F]+ \"([^\"]+)\".*$/\\1/')"
+fi
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | grep -m 1 'Apple Development' | sed -E 's/^ *[0-9]+\\) [0-9A-F]+ \"([^\"]+)\".*$/\\1/')"
+fi
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="-"
+    echo "⚠️  未找到可用代码签名证书，将使用 ad-hoc 签名：每次更新可能都要重新授权（这是系统机制，不是玄学）"
+else
+    echo "✅ 使用代码签名证书: $SIGN_IDENTITY"
+    echo "💡 如需固定使用某个证书，请设置环境变量 CLOUDYIELD_CODESIGN_IDENTITY"
+fi
 
-# 使用 ad-hoc 签名但保持 identifier 一致，并启用 Hardened Runtime
-# 关键：使用 --preserve-metadata 来保持元数据一致性
-codesign --force --deep --sign - \
+# 使用固定 Bundle ID + 固定签名身份，最大化复用系统授权
+if ! codesign --force --deep --sign "$SIGN_IDENTITY" \
     --identifier "com.lhish.cloudyield" \
     --entitlements "$CONTENTS_DIR/Entitlements.plist" \
     --options runtime \
     --timestamp=none \
-    "$APP_DIR"
-
-if [ $? -eq 0 ]; then
-    echo "✅ 代码签名完成（Hardened Runtime）"
-
-    # 显示签名信息
-    echo ""
-    echo "📋 签名信息："
-    codesign -dvvv "$APP_DIR" 2>&1 | grep -E "(Identifier|CDHash)" | head -3
-else
-    echo "⚠️  代码签名失败（不影响使用）"
+    "$APP_DIR"; then
+    if [ "$SIGN_IDENTITY" != "-" ]; then
+        echo "⚠️  使用证书签名失败，回退到 ad-hoc 签名（权限可能需要重新授权）"
+        SIGN_IDENTITY="-"
+        codesign --force --deep --sign "$SIGN_IDENTITY" \
+            --identifier "com.lhish.cloudyield" \
+            --entitlements "$CONTENTS_DIR/Entitlements.plist" \
+            --options runtime \
+            --timestamp=none \
+            "$APP_DIR"
+    else
+        echo "⚠️  代码签名失败（不影响使用）"
+    fi
 fi
+
+echo "✅ 代码签名完成（Hardened Runtime）"
+
+# 显示签名信息
+echo ""
+echo "📋 签名信息："
+codesign -dvvv "$APP_DIR" 2>&1 | grep -E "(Identifier|CDHash)" | head -3
 echo ""
 
 # 8. 完成
