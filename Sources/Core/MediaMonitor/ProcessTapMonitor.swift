@@ -62,6 +62,9 @@ final class ProcessTapMonitor {
     private var processListListener: AudioObjectPropertyListenerBlock?
     private var defaultOutputListener: AudioObjectPropertyListenerBlock?
 
+    private var restartCount = 0
+    private var currentExcludedIDs: [AudioObjectID] = []
+
     init(config: Config = Config()) {
         self.config = config
     }
@@ -96,7 +99,8 @@ final class ProcessTapMonitor {
     private func requestRestart(reason: String) {
         guard isRunning else { return }
 
-        logDebug("Process Tap 请求重启: \(reason)", module: "OtherAudio")
+        restartCount += 1
+        logDebug("Process Tap 请求重启 #\(restartCount): \(reason)", module: "OtherAudio")
 
         restartWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
@@ -118,6 +122,7 @@ final class ProcessTapMonitor {
 
     private func startTap() throws {
         let (excludedProcessIDs, _) = try findExcludedProcessObjectIDs()
+        currentExcludedIDs = excludedProcessIDs
 
         let outputDeviceID = try AudioObjectID.system.readDefaultOutputDevice()
         guard outputDeviceID.isValid else { throw MonitorError.missingDefaultOutputDevice }
@@ -195,6 +200,7 @@ final class ProcessTapMonitor {
         }
 
         tapASBD = nil
+        currentExcludedIDs = []
         pendingTarget = nil
         pendingSince = nil
     }
@@ -268,7 +274,11 @@ final class ProcessTapMonitor {
             mElement: kAudioObjectPropertyElementMain
         )
         let processListListener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            self?.requestRestart(reason: "processListChanged")
+            guard let self else { return }
+            let newIDs = (try? self.findExcludedProcessObjectIDs().0) ?? []
+            guard newIDs != self.currentExcludedIDs else { return }
+            logDebug("排除进程列表变化: \(self.currentExcludedIDs.count) → \(newIDs.count)", module: "OtherAudio")
+            self.requestRestart(reason: "excludedProcessesChanged")
         }
         self.processListListener = processListListener
         _ = AudioObjectAddPropertyListenerBlock(.system, &processListAddress, evalQueue, processListListener)
