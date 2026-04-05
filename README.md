@@ -92,3 +92,4 @@ swift build -c release
 ## 致谢
 
 - [AudioCap](https://github.com/insidegui/AudioCap) - Process Tap API 实践参考
+- [Linux.do](https://linux.do/) - 中文技术社区
